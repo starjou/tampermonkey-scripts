@@ -1,6 +1,6 @@
-# Tampermonkey Scripts
+# TamperMonkey Scripts
 
-個人用 Tampermonkey 使用者腳本集，針對社群媒體影片播放體驗進行增強。
+個人用 TamperMonkey 使用者腳本集，針對社群媒體影片播放體驗進行增強。
 
 ## Scripts
 
