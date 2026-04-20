@@ -5,21 +5,21 @@
 ## Scripts
 
 ### IG Video Control
-**檔案：** `ig-video-control.js`
-**適用：** https://www.instagram.com/*
+**檔案：** `ig-video-control.js`<br>
+**適用：** https://www.instagram.com/*<br>
 **功能：**
 - 在 Instagram 影片（貼文、Reel）加上全螢幕按鈕
 - 自動取消靜音
 
 ### Facebook Video Control
-**檔案：** `facebook-video-control.js`
-**適用：** https://www.facebook.com/*
+**檔案：** `facebook-video-control.js`<br>
+**適用：** https://www.facebook.com/*<br>
 **功能：**
 - 在 Facebook Reels 加上全螢幕控制器
 
 ### Ad Overlay Blocker
-**檔案：** `ad-blocker.js`
-**適用：** 所有網站
+**檔案：** `ad-blocker.js`<br>
+**適用：** 所有網站<br>
 **功能：**
 - 阻擋影片上的廣告 overlay，讓點擊穿透至 video 元素
 - 封鎖 `window.open` 廣告跳轉
