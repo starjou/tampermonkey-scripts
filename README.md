@@ -18,7 +18,7 @@
 - 在 Facebook Reels 加上全螢幕控制器
 
 ### Ad Overlay Blocker
-**檔案：** `ad-blocker.js`<br>
+**檔案：** `ad-blocker.user.js`（殼）、`ad-blocker.js`（邏輯）<br>
 **適用：** 所有網站<br>
 **功能：**
 - 阻擋影片上的廣告 overlay，讓點擊穿透至 video 元素
@@ -32,7 +32,7 @@
 2. 點擊下方連結，Tampermonkey 會自動偵測並提示安裝：
    - [IG Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ig-video-control.js)
    - [Facebook Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/facebook-video-control.js)
-   - [Ad Overlay Blocker](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.js)
+   - [Ad Overlay Blocker](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.user.js)
 
 ### 自動更新
 腳本內含 `@updateURL`，Tampermonkey 會定期檢查版本並自動更新。

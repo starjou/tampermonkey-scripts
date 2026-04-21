@@ -1,16 +1,3 @@
-// ==UserScript==
-// @name         Ad Overlay Blocker
-// @namespace    https://www.jk-web.com/
-// @version      1.1
-// @description  阻擋影片上的廣告 overlay，防止假 click 觸發全螢幕與開啟廣告分頁
-// @author       Jacky Jou
-// @match        https://*/*
-// @match        http://*/*
-// @run-at       document-start
-// @grant        none
-// @updateURL    https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.js
-// @downloadURL  https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.js
-// ==/UserScript==
 (function () {
     'use strict';
 
