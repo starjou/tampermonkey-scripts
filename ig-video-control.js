@@ -34,6 +34,8 @@
                 transition: background 0.15s;
             }
             .ig-fs-btn:hover { background: rgba(48,48,48,0.7); }
+            .ig-fs-btn-t1 { background: rgba(43,48,54,0.8); }
+            .ig-fs-btn-t1:hover { background: rgba(43,48,54,1); }
         `;
         document.head.appendChild(style);
     }
@@ -144,7 +146,7 @@
         <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
     </svg>`;
 
-    function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick) {
+    function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick, extraBtnClass) {
         if (document.getElementById(btnId)) return;
 
         const videoParent = v.parentElement;
@@ -157,7 +159,7 @@
         wrap.id = btnId;
 
         const btn = document.createElement('button');
-        btn.className = 'ig-fs-btn';
+        btn.className = extraBtnClass ? 'ig-fs-btn ' + extraBtnClass : 'ig-fs-btn';
         btn.type = 'button';
         btn.title = 'Fullscreen';
         btn.innerHTML = FS_SVG;
@@ -192,7 +194,7 @@
         };
         const trySetup = (muteBtn) => {
             clickUnmute(v);
-            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), muteBtn, t1Click);
+            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), muteBtn, t1Click, 'ig-fs-btn-t1');
         };
 
         const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
@@ -204,7 +206,7 @@
             if (btn) { mo.disconnect(); trySetup(btn); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click); }, 7000);
+        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click, 'ig-fs-btn-t1'); }, 7000);
     }
 
     const t1VideoObs = new IntersectionObserver((entries) => {
