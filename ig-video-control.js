@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.4
+// @version      1.5
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -22,18 +22,18 @@
                 position: absolute;
                 z-index: 9999;
                 bottom: 12px;
-                left: 12px;
+                right: 12px;
                 pointer-events: auto;
             }
             .ig-fs-btn {
-                width: 32px; height: 32px;
+                width: 28px; height: 28px;
                 display: flex; align-items: center; justify-content: center;
-                background: rgba(0,0,0,0.55);
+                background: rgba(48,48,48,0.4);
                 border: none; border-radius: 50%;
                 cursor: pointer; padding: 0;
                 transition: background 0.15s;
             }
-            .ig-fs-btn:hover { background: rgba(0,0,0,0.8); }
+            .ig-fs-btn:hover { background: rgba(48,48,48,0.7); }
         `;
         document.head.appendChild(style);
     }
@@ -130,20 +130,27 @@
         if (btn && isMuted(btn.closest('[role]') || btn.parentElement)) btn.click();
     }
 
+    function positionFSBtnNextTo(wrap, muteBtn, videoParent) {
+        const mr = muteBtn.getBoundingClientRect();
+        const pr = videoParent.getBoundingClientRect();
+        wrap.style.left = 'auto';
+        wrap.style.right = (pr.right - mr.left + 8) + 'px';
+        wrap.style.bottom = Math.max(0, pr.bottom - mr.bottom) + 'px';
+    }
+
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
     const FS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
         viewBox="0 0 24 24" fill="white">
         <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
     </svg>`;
 
-    function attachFSBtnToVideo(v, btnId) {
+    function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick) {
         if (document.getElementById(btnId)) return;
 
-        // video 需要一個 position:relative 的父層
         const videoParent = v.parentElement;
         if (!videoParent) return;
-        const existingPos = window.getComputedStyle(videoParent).position;
-        if (existingPos === 'static') videoParent.style.position = 'relative';
+        if (window.getComputedStyle(videoParent).position === 'static')
+            videoParent.style.position = 'relative';
 
         const wrap = document.createElement('div');
         wrap.className = 'ig-fs-btn-wrap';
@@ -157,14 +164,12 @@
 
         btn.addEventListener('click', (e) => {
             e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
-            setTimeout(() => {
-                enableBlock(v);
-                v.requestFullscreen().catch(() => disableBlock());
-            }, 0);
+            setTimeout(() => onFSClick(), 0);
         });
 
         wrap.appendChild(btn);
         videoParent.appendChild(wrap);
+        if (muteBtn) positionFSBtnNextTo(wrap, muteBtn, videoParent);
     }
 
     // ════════════════════════════════════════════════════════
@@ -181,24 +186,25 @@
         if (v.dataset.igFsT1) return;
         v.dataset.igFsT1 = '1';
 
-        const trySetup = () => {
+        const t1Click = () => {
+            enableBlock(v);
+            v.requestFullscreen().catch(() => disableBlock());
+        };
+        const trySetup = (muteBtn) => {
             clickUnmute(v);
-            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now());
+            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), muteBtn, t1Click);
         };
 
-        // 先等 mute button 出現再 unmute，但 FSBtn 直接掛
         const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
-        if (muteBtn) { trySetup(); return; }
+        if (muteBtn) { trySetup(muteBtn); return; }
 
         const watchTarget = v.closest('article') || v.parentElement;
         const mo = new MutationObserver(() => {
             const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
-            if (btn) { mo.disconnect(); trySetup(); }
+            if (btn) { mo.disconnect(); trySetup(btn); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-
-        // 無論有沒有 muteBtn，7 秒後若還沒插就強制插 FSBtn
-        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now()); }, 7000);
+        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click); }, 7000);
     }
 
     const t1VideoObs = new IntersectionObserver((entries) => {
@@ -239,52 +245,27 @@
         if (v.dataset.igFsT2) return;
         v.dataset.igFsT2 = '1';
 
-        const btnId = 'IGFsBtnT2_' + Date.now();
-
-        const trySetup = () => {
+        const t2Click = () => {
+            const cv = type2GetCurrentVideo();
+            if (!cv) return;
+            enableBlock(cv);
+            cv.requestFullscreen().catch(() => disableBlock());
+        };
+        const trySetup = (muteBtn) => {
             clickUnmute(v);
-            // 對 reels，FSBtn 放右下角
-            if (document.getElementById(btnId)) return;
-            const videoParent = v.parentElement;
-            if (!videoParent) return;
-            if (window.getComputedStyle(videoParent).position === 'static')
-                videoParent.style.position = 'relative';
-
-            const wrap = document.createElement('div');
-            wrap.className = 'ig-fs-btn-wrap';
-            wrap.id = btnId;
-            wrap.style.cssText = 'bottom:60px;left:auto;right:12px;';  // reels 右下角
-
-            const btn = document.createElement('button');
-            btn.className = 'ig-fs-btn';
-            btn.type = 'button';
-            btn.title = 'Fullscreen';
-            btn.innerHTML = FS_SVG;
-
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
-                const cv = type2GetCurrentVideo();
-                if (!cv) return;
-                setTimeout(() => {
-                    enableBlock(cv);
-                    cv.requestFullscreen().catch(() => disableBlock());
-                }, 0);
-            });
-
-            wrap.appendChild(btn);
-            videoParent.appendChild(wrap);
+            attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), muteBtn, t2Click);
         };
 
         const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
-        if (muteBtn) { trySetup(); return; }
+        if (muteBtn) { trySetup(muteBtn); return; }
 
         const watchTarget = v.closest('[aria-label="Video player"]') || v.parentElement;
         const mo = new MutationObserver(() => {
             const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
-            if (btn) { mo.disconnect(); trySetup(); }
+            if (btn) { mo.disconnect(); trySetup(btn); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => { mo.disconnect(); trySetup(); }, 7000);
+        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), null, t2Click); }, 7000);
     }
 
     const t2VideoObs = new IntersectionObserver((entries) => {
