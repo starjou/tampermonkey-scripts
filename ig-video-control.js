@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.3
+// @version      1.4
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -12,22 +12,31 @@
 (function () {
     'use strict';
 
-    // ── 注入全螢幕 CSS ──────────────────────────────────────────
+    // ── 全螢幕 CSS ──────────────────────────────────────────
     function injectFullscreenStyle() {
         const style = document.createElement('style');
         style.textContent = `
-        video:-webkit-full-screen {
-            object-fit: contain !important;
-            background: #000;
-        }
-        video:fullscreen {
-            object-fit: contain !important;
-            background: #000;
-        }
-    `;
+            video:-webkit-full-screen { object-fit: contain !important; background: #000; }
+            video:fullscreen           { object-fit: contain !important; background: #000; }
+            .ig-fs-btn-wrap {
+                position: absolute;
+                z-index: 9999;
+                bottom: 12px;
+                left: 12px;
+                pointer-events: auto;
+            }
+            .ig-fs-btn {
+                width: 32px; height: 32px;
+                display: flex; align-items: center; justify-content: center;
+                background: rgba(0,0,0,0.55);
+                border: none; border-radius: 50%;
+                cursor: pointer; padding: 0;
+                transition: background 0.15s;
+            }
+            .ig-fs-btn:hover { background: rgba(0,0,0,0.8); }
+        `;
         document.head.appendChild(style);
     }
-
     injectFullscreenStyle();
 
     // ── 全螢幕攔截 ──────────────────────────────────────────
@@ -36,37 +45,28 @@
     const BLOCK_EVENTS = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
 
     function blockClick(e) {
-        if (!blockClickActive) return;
-        if (e.target.tagName !== 'VIDEO') return;
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        e.preventDefault();
+        if (!blockClickActive || e.target.tagName !== 'VIDEO') return;
+        e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
         if (e.type === 'click') {
             if (e.target.paused) {
                 e.target.play();
             } else {
                 e.target.pause();
-                const originalPlay = e.target.play.bind(e.target);
+                const orig = e.target.play.bind(e.target);
                 e.target.play = () => Promise.resolve();
-                setTimeout(() => {
-                    e.target.play = originalPlay;
-                }, 300);
+                setTimeout(() => { e.target.play = orig; }, 300);
             }
         }
     }
 
     function enableBlock(v) {
-        currentVideo = v;
-        blockClickActive = true;
+        currentVideo = v; blockClickActive = true;
         BLOCK_EVENTS.forEach(evt => {
             document.addEventListener(evt, blockClick, true);
             v.addEventListener(evt, blockClick, true);
         });
-        const exitChecker = setInterval(() => {
-            if (!document.fullscreenElement) {
-                disableBlock();
-                clearInterval(exitChecker);
-            }
+        const timer = setInterval(() => {
+            if (!document.fullscreenElement) { disableBlock(); clearInterval(timer); }
         }, 300);
     }
 
@@ -75,275 +75,237 @@
             document.removeEventListener(evt, blockClick, true);
             if (currentVideo) currentVideo.removeEventListener(evt, blockClick, true);
         });
-        blockClickActive = false;
-        currentVideo = null;
+        blockClickActive = false; currentVideo = null;
     }
 
-    // ════════════════════════════════════════════════════════
-    // TYPE 1：modal / 頁面方式（/p/ 或 /reel/）
-    // ════════════════════════════════════════════════════════
+    // ── 多語系 mute button selector ──────────────────────────
+    // IG 有時用中文 aria-label，有時英文，全抓
+    const MUTE_BTN_SELECTORS = [
+        'button[aria-label="切換音效"]',
+        'button[aria-label="Mute"]',
+        'button[aria-label="Unmute"]',
+        'button[aria-label="Audio"]',
+    ];
+    const MUTED_SVG_SELECTORS = [
+        'svg[aria-label="已靜音"]',
+        'svg[aria-label="Muted"]',
+    ];
+    const PLAYING_SVG_SELECTORS = [
+        'svg[aria-label="正在播放音效"]',
+        'svg[aria-label="Audio is playing"]',
+    ];
 
-    function isType1Video(v) {
-        const href = location.href;
-        if (!href.includes('/p/') && !href.includes('/reel/')) return false;
-        const rect = v.getBoundingClientRect();
-        if (rect.width < 100 || rect.height < 100) return false;
-        return true;
-    }
-
-    function findType1MuteBtn(v) {
-        let el = v.parentElement;
+    function findMuteBtn(root) {
         for (let i = 0; i < 15; i++) {
-            const btn = el?.querySelector('button[aria-label="切換音效"]');
-            if (btn) return btn;
-            el = el?.parentElement;
+            for (const sel of MUTE_BTN_SELECTORS) {
+                const btn = root?.querySelector(sel);
+                if (btn) return btn;
+            }
+            root = root?.parentElement;
         }
         return null;
     }
 
-    function createFSBtn(v) {
-        const FSBtn = document.createElement('button');
-        FSBtn.id = 'IGRequestFullScreen';
-        FSBtn.type = 'button';
-        FSBtn.style.cssText = `
-            width: 52px;
-            height: 52px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: none;
-            border: none;
-            padding: 0;
-            cursor: pointer;
-            margin-right: -20px;
-        `;
+    function findMuteBtnBySvg(root) {
+        const allSels = [...MUTED_SVG_SELECTORS, ...PLAYING_SVG_SELECTORS];
+        for (let i = 0; i < 15; i++) {
+            for (const sel of allSels) {
+                const svg = root?.querySelector(sel);
+                if (svg) return svg.closest('button') || svg.parentNode;
+            }
+            root = root?.parentElement;
+        }
+        return null;
+    }
 
-        const inner = document.createElement('div');
-        inner.style.cssText = `
-            width: 28px;
-            height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(43, 48, 54, 0.5);
-            border-radius: 50%;
-        `;
+    function isMuted(root) {
+        for (const sel of MUTED_SVG_SELECTORS) {
+            if (root?.querySelector(sel)) return true;
+        }
+        return false;
+    }
 
-        const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-        </svg>`;
-        inner.innerHTML = svgIcon;
-        FSBtn.appendChild(inner);
+    function clickUnmute(startEl) {
+        const btn = findMuteBtnBySvg(startEl) || findMuteBtn(startEl);
+        if (btn && isMuted(btn.closest('[role]') || btn.parentElement)) btn.click();
+    }
 
-        FSBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            e.preventDefault();
+    // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
+    const FS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+        viewBox="0 0 24 24" fill="white">
+        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+    </svg>`;
+
+    function attachFSBtnToVideo(v, btnId) {
+        if (document.getElementById(btnId)) return;
+
+        // video 需要一個 position:relative 的父層
+        const videoParent = v.parentElement;
+        if (!videoParent) return;
+        const existingPos = window.getComputedStyle(videoParent).position;
+        if (existingPos === 'static') videoParent.style.position = 'relative';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'ig-fs-btn-wrap';
+        wrap.id = btnId;
+
+        const btn = document.createElement('button');
+        btn.className = 'ig-fs-btn';
+        btn.type = 'button';
+        btn.title = 'Fullscreen';
+        btn.innerHTML = FS_SVG;
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
             setTimeout(() => {
                 enableBlock(v);
                 v.requestFullscreen().catch(() => disableBlock());
             }, 0);
         });
 
-        return FSBtn;
+        wrap.appendChild(btn);
+        videoParent.appendChild(wrap);
     }
 
-    function insertType1FSBtn(v, muteBtn) {
-        document.getElementById('IGRequestFullScreen')?.remove();
-        const container = muteBtn.parentElement;
-        container.style.flexDirection = 'row';
-        container.style.alignItems = 'center';
-        container.style.gap = '4px';
-        const FSBtn = createFSBtn(v);
-        muteBtn.insertAdjacentElement('beforebegin', FSBtn);
+    // ════════════════════════════════════════════════════════
+    // TYPE 1：/p/ 或 /reel/ 頁面
+    // ════════════════════════════════════════════════════════
+
+    function isType1Video(v) {
+        if (!location.href.includes('/p/') && !location.href.includes('/reel/')) return false;
+        const r = v.getBoundingClientRect();
+        return r.width >= 100 && r.height >= 100;
     }
 
     function setupType1Video(v) {
-        if (v.dataset.setting) return;
-        v.dataset.setting = '1';
+        if (v.dataset.igFsT1) return;
+        v.dataset.igFsT1 = '1';
 
-        const muteBtn = findType1MuteBtn(v);
-        if (muteBtn) {
-            if (muteBtn.querySelector('svg[aria-label="已靜音"]')) muteBtn.click();
-            insertType1FSBtn(v, muteBtn);
-            delete v.dataset.setting;
-            return;
-        }
+        const trySetup = () => {
+            clickUnmute(v);
+            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now());
+        };
+
+        // 先等 mute button 出現再 unmute，但 FSBtn 直接掛
+        const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
+        if (muteBtn) { trySetup(); return; }
 
         const watchTarget = v.closest('article') || v.parentElement;
         const mo = new MutationObserver(() => {
-            const muteBtn = findType1MuteBtn(v);
-            if (muteBtn) {
-                mo.disconnect();
-                if (muteBtn.querySelector('svg[aria-label="已靜音"]')) muteBtn.click();
-                insertType1FSBtn(v, muteBtn);
-                delete v.dataset.setting;
-            }
+            const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
+            if (btn) { mo.disconnect(); trySetup(); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => {
-            mo.disconnect();
-            delete v.dataset.setting;
-        }, 10000);
+
+        // 無論有沒有 muteBtn，7 秒後若還沒插就強制插 FSBtn
+        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now()); }, 7000);
     }
 
-    const type1VideoObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (!entry.isIntersecting) return;
-            const v = entry.target;
-            if (!isType1Video(v)) return;
-            setupType1Video(v);
+    const t1VideoObs = new IntersectionObserver((entries) => {
+        entries.forEach(({ isIntersecting, target: v }) => {
+            if (isIntersecting && isType1Video(v)) setupType1Video(v);
         });
     });
 
-    const type1DomObserver = new MutationObserver(() => {
+    const t1DomObs = new MutationObserver(() => {
         document.querySelectorAll('video').forEach(v => {
-            if (v.dataset.observed) return;
-            v.dataset.observed = '1';
-            type1VideoObserver.observe(v);
+            if (v.dataset.igObsT1) return;
+            v.dataset.igObsT1 = '1';
+            t1VideoObs.observe(v);
         });
     });
-
-    type1DomObserver.observe(document.body, { childList: true, subtree: true });
-
+    t1DomObs.observe(document.body, { childList: true, subtree: true });
     document.querySelectorAll('video').forEach(v => {
-        v.dataset.observed = '1';
-        type1VideoObserver.observe(v);
+        v.dataset.igObsT1 = '1'; t1VideoObs.observe(v);
     });
 
     // ════════════════════════════════════════════════════════
-    // TYPE 2：/reels/ 全螢幕捲動介面
+    // TYPE 2：/reels/ 捲動介面
     // ════════════════════════════════════════════════════════
 
-    function isType2() {
-        return location.href.includes('/reels/');
-    }
+    function isType2() { return location.href.includes('/reels/'); }
 
     function type2GetCurrentVideo() {
         return Array.from(document.querySelectorAll('video')).find(v => {
-            const rect = v.getBoundingClientRect();
-            return (
-                rect.top >= 0 &&
-                rect.bottom <= window.innerHeight &&
-                rect.width > 100 &&
-                rect.height > 100 &&
-                !v.paused &&
-                !v.ended
-            );
+            const r = v.getBoundingClientRect();
+            return r.top >= 0 && r.bottom <= window.innerHeight
+                && r.width > 100 && r.height > 100
+                && !v.paused && !v.ended;
         });
     }
 
-    function type2Unmute() {
-        document.querySelector("svg[aria-label='已靜音']")?.parentNode?.click();
-    }
-
-    function type2FindMuteBtnForVideo(v) {
-        let el = v.parentElement;
-        for (let i = 0; i < 15; i++) {
-            const svg = el?.querySelector("svg[aria-label='正在播放音效'], svg[aria-label='已靜音']");
-            if (svg) return svg.parentNode;
-            el = el?.parentElement;
-        }
-        return null;
-    }
-
-    function type2InsertFSBtn(v, muteBtn) {
-        if (muteBtn.parentElement.querySelector('#IGReelsFSBtn')) return;
-
-        const container = muteBtn.parentElement;
-        container.style.flexDirection = 'row';
-        container.style.alignItems = 'center';
-        container.style.justifyContent = 'flex-end';
-
-        const bg = window.getComputedStyle(muteBtn).backgroundColor;
-
-        const FSBtn = document.createElement('button');
-        FSBtn.id = 'IGReelsFSBtn';
-        FSBtn.type = 'button';
-        FSBtn.style.cssText = `
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: ${bg};
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            margin-right: 8px;
-        `;
-        FSBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="white">
-            <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-        </svg>`;
-
-        FSBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            const currentVideo = type2GetCurrentVideo();
-            if (!currentVideo) return;
-            setTimeout(() => {
-                enableBlock(currentVideo);
-                currentVideo.requestFullscreen().catch(() => disableBlock());
-            }, 0);
-        });
-
-        muteBtn.insertAdjacentElement('beforebegin', FSBtn);
-    }
-
-    function type2SetupVideo(v) {
+    function setupType2Video(v) {
         if (!isType2()) return;
-        if (v.dataset.type2Setting) return;
-        v.dataset.type2Setting = '1';
+        if (v.dataset.igFsT2) return;
+        v.dataset.igFsT2 = '1';
 
-        const muteBtn = type2FindMuteBtnForVideo(v);
-        if (muteBtn) {
-            type2Unmute();
-            type2InsertFSBtn(v, muteBtn);
-            delete v.dataset.type2Setting;
-            return;
-        }
+        const btnId = 'IGFsBtnT2_' + Date.now();
+
+        const trySetup = () => {
+            clickUnmute(v);
+            // 對 reels，FSBtn 放右下角
+            if (document.getElementById(btnId)) return;
+            const videoParent = v.parentElement;
+            if (!videoParent) return;
+            if (window.getComputedStyle(videoParent).position === 'static')
+                videoParent.style.position = 'relative';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'ig-fs-btn-wrap';
+            wrap.id = btnId;
+            wrap.style.cssText = 'bottom:60px;left:auto;right:12px;';  // reels 右下角
+
+            const btn = document.createElement('button');
+            btn.className = 'ig-fs-btn';
+            btn.type = 'button';
+            btn.title = 'Fullscreen';
+            btn.innerHTML = FS_SVG;
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+                const cv = type2GetCurrentVideo();
+                if (!cv) return;
+                setTimeout(() => {
+                    enableBlock(cv);
+                    cv.requestFullscreen().catch(() => disableBlock());
+                }, 0);
+            });
+
+            wrap.appendChild(btn);
+            videoParent.appendChild(wrap);
+        };
+
+        const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
+        if (muteBtn) { trySetup(); return; }
 
         const watchTarget = v.closest('[aria-label="Video player"]') || v.parentElement;
         const mo = new MutationObserver(() => {
-            const muteBtn = type2FindMuteBtnForVideo(v);
-            if (muteBtn) {
-                mo.disconnect();
-                type2Unmute();
-                type2InsertFSBtn(v, muteBtn);
-                delete v.dataset.type2Setting;
-            }
+            const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
+            if (btn) { mo.disconnect(); trySetup(); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => {
-            mo.disconnect();
-            delete v.dataset.type2Setting;
-        }, 10000);
+        setTimeout(() => { mo.disconnect(); trySetup(); }, 7000);
     }
 
-    const type2VideoObserver = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (!entry.isIntersecting) return;
-            if (!isType2()) return;
-            type2SetupVideo(entry.target);
+    const t2VideoObs = new IntersectionObserver((entries) => {
+        entries.forEach(({ isIntersecting, target: v }) => {
+            if (isIntersecting && isType2()) setupType2Video(v);
         });
     });
 
-    const type2DomObserver = new MutationObserver(() => {
+    const t2DomObs = new MutationObserver(() => {
         if (!isType2()) return;
         document.querySelectorAll('video').forEach(v => {
-            if (v.dataset.type2Observed) return;
-            v.dataset.type2Observed = '1';
-            type2VideoObserver.observe(v);
+            if (v.dataset.igObsT2) return;
+            v.dataset.igObsT2 = '1';
+            t2VideoObs.observe(v);
         });
     });
-
-    type2DomObserver.observe(document.body, { childList: true, subtree: true });
+    t2DomObs.observe(document.body, { childList: true, subtree: true });
 
     if (isType2()) {
         document.querySelectorAll('video').forEach(v => {
-            v.dataset.type2Observed = '1';
-            type2VideoObserver.observe(v);
+            v.dataset.igObsT2 = '1'; t2VideoObs.observe(v);
         });
     }
 
