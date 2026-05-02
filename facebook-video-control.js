@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Facebook Video Control
 // @namespace    https://www.jk-web.com/
-// @version      2.1
+// @version      2.2
 // @description  在 Facebook 的 Reels 顯示全螢幕控制器
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
@@ -123,6 +123,9 @@
 
     // ── 核心：等控制列出現再插入按鈕 ────────────────────────
     function setupVideo(v) {
+        if (v.dataset.fbFsSetup) return;
+        v.dataset.fbFsSetup = '1';
+
         const unmuteBtn = findBtn(v, '取消靜音');
         if (v.muted && unmuteBtn) unmuteBtn.click();
 
@@ -143,7 +146,7 @@
             }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => mo.disconnect(), 10000);
+        setTimeout(() => { mo.disconnect(); delete v.dataset.fbFsSetup; }, 10000);
     }
 
     // ── IntersectionObserver：監控 video 進入畫面 ───────────
@@ -177,7 +180,9 @@
     function reScanVideos() {
         document.querySelectorAll('video').forEach(v => {
             delete v.dataset.observed;
+            delete v.dataset.fbFsSetup;
             v.dataset.observed = '1';
+            videoObserver.unobserve(v);
             videoObserver.observe(v);
         });
     }
@@ -196,7 +201,6 @@
     // ── 方案 B：polling 補底 ────────────────────────────────
     setInterval(() => {
         if (!location.href.includes('/reel/')) return;
-        if (document.getElementById('RequestFullScreen')) return;
         document.querySelectorAll('video').forEach(v => {
             if (!isReelVideo(v)) return;
             const r = v.getBoundingClientRect();
