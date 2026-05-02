@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Facebook Video Control
 // @namespace    https://www.jk-web.com/
-// @version      2.0
+// @version      2.1
 // @description  在 Facebook 的 Reels 顯示全螢幕控制器
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
@@ -172,5 +172,36 @@
         v.dataset.observed = '1';
         videoObserver.observe(v);
     });
+
+    // ── 方案 A：SPA 換頁偵測 ────────────────────────────────
+    function reScanVideos() {
+        document.querySelectorAll('video').forEach(v => {
+            delete v.dataset.observed;
+            v.dataset.observed = '1';
+            videoObserver.observe(v);
+        });
+    }
+
+    let lastHref = location.href;
+    function onUrlChange() {
+        if (location.href === lastHref) return;
+        lastHref = location.href;
+        if (location.href.includes('/reel/')) setTimeout(reScanVideos, 500);
+    }
+
+    const origPushState = history.pushState.bind(history);
+    history.pushState = function (...args) { origPushState(...args); onUrlChange(); };
+    window.addEventListener('popstate', onUrlChange);
+
+    // ── 方案 B：polling 補底 ────────────────────────────────
+    setInterval(() => {
+        if (!location.href.includes('/reel/')) return;
+        if (document.getElementById('RequestFullScreen')) return;
+        document.querySelectorAll('video').forEach(v => {
+            if (!isReelVideo(v)) return;
+            const r = v.getBoundingClientRect();
+            if (r.width > 0 && r.top < window.innerHeight && r.bottom > 0) setupVideo(v);
+        });
+    }, 1500);
 
 })();
