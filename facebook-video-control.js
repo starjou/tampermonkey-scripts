@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Facebook Video Control
 // @namespace    https://www.jk-web.com/
-// @version      2.2
+// @version      2.3
 // @description  在 Facebook 的 Reels 顯示全螢幕控制器
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
@@ -119,18 +119,23 @@
         document.getElementById('RequestFullScreen')?.remove();
         const FSBtn = createFSBtn(v);
         sndBtn.parentNode.parentNode.parentNode.insertAdjacentElement('afterend', FSBtn);
+        v._fbFsBtn = FSBtn;
     }
 
     // ── 核心：等控制列出現再插入按鈕 ────────────────────────
     function setupVideo(v) {
-        if (v.dataset.fbFsSetup) return;
-        v.dataset.fbFsSetup = '1';
+        if (v._fbFsBtn && document.contains(v._fbFsBtn)) return;
+        if (v._fbFsSetup) return;
+        v._fbFsSetup = true;
+
+        const done = () => { v._fbFsSetup = false; };
 
         const unmuteBtn = findBtn(v, '取消靜音');
         if (v.muted && unmuteBtn) unmuteBtn.click();
 
         const sndBtn = findBtn(v, '靜音');
         if (sndBtn) {
+            done();
             insertFSBtn(v, sndBtn);
             return;
         }
@@ -142,11 +147,12 @@
                 mo.disconnect();
                 const unmute = findBtn(v, '取消靜音');
                 if (v.muted && unmute) unmute.click();
+                done();
                 insertFSBtn(v, btn);
             }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => { mo.disconnect(); delete v.dataset.fbFsSetup; }, 10000);
+        setTimeout(() => { mo.disconnect(); done(); }, 2000);
     }
 
     // ── IntersectionObserver：監控 video 進入畫面 ───────────
@@ -179,10 +185,7 @@
     // ── 方案 A：SPA 換頁偵測 ────────────────────────────────
     function reScanVideos() {
         document.querySelectorAll('video').forEach(v => {
-            delete v.dataset.observed;
-            delete v.dataset.fbFsSetup;
-            v.dataset.observed = '1';
-            videoObserver.unobserve(v);
+            v._fbFsBtn = null;
             videoObserver.observe(v);
         });
     }

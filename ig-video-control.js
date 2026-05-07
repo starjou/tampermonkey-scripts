@@ -185,14 +185,18 @@
     }
 
     function setupType1Video(v) {
-        if (v.dataset.igFsT1) return;
-        v.dataset.igFsT1 = '1';
+        if (v.parentElement?.querySelector('.ig-fs-btn-wrap')) return;
+        if (v._igFsT1Setting) return;
+        v._igFsT1Setting = true;
+
+        const done = () => { v._igFsT1Setting = false; };
 
         const t1Click = () => {
             enableBlock(v);
             v.requestFullscreen().catch(() => disableBlock());
         };
         const trySetup = (muteBtn) => {
+            done();
             clickUnmute(v);
             attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), muteBtn, t1Click, 'ig-fs-btn-t1');
         };
@@ -206,7 +210,12 @@
             if (btn) { mo.disconnect(); trySetup(btn); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click, 'ig-fs-btn-t1'); }, 7000);
+        setTimeout(() => {
+            mo.disconnect();
+            done();
+            if (!v.parentElement?.querySelector('.ig-fs-btn-wrap'))
+                attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click, 'ig-fs-btn-t1');
+        }, 2000);
     }
 
     const t1VideoObs = new IntersectionObserver((entries) => {
@@ -244,8 +253,11 @@
 
     function setupType2Video(v) {
         if (!isType2()) return;
-        if (v.dataset.igFsT2) return;
-        v.dataset.igFsT2 = '1';
+        if (v.parentElement?.querySelector('.ig-fs-btn-wrap')) return;
+        if (v._igFsT2Setting) return;
+        v._igFsT2Setting = true;
+
+        const done = () => { v._igFsT2Setting = false; };
 
         const t2Click = () => {
             const cv = type2GetCurrentVideo();
@@ -254,6 +266,7 @@
             cv.requestFullscreen().catch(() => disableBlock());
         };
         const trySetup = (muteBtn) => {
+            done();
             clickUnmute(v);
             attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), muteBtn, t2Click);
         };
@@ -267,7 +280,12 @@
             if (btn) { mo.disconnect(); trySetup(btn); }
         });
         mo.observe(watchTarget, { childList: true, subtree: true });
-        setTimeout(() => { mo.disconnect(); attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), null, t2Click); }, 7000);
+        setTimeout(() => {
+            mo.disconnect();
+            done();
+            if (!v.parentElement?.querySelector('.ig-fs-btn-wrap'))
+                attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), null, t2Click);
+        }, 2000);
     }
 
     const t2VideoObs = new IntersectionObserver((entries) => {
