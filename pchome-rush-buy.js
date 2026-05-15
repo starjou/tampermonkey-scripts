@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      1.4
+// @version      1.5
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、CVV 自動填入
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
@@ -181,9 +181,17 @@
     // ── 自動重整：等頁面按鈕容器出現後才 reload，避免無窮快速迴圈 ──
     function scheduleReload() {
         stopAutoRefresh();
-        // 只有在容器確認存在（按鈕確實是 disabled）才觸發 reload
-        // 如果容器尚未出現就已進入此函式，代表頁面還在載入，等 load 事件
         function doReload() {
+            if (fired) return;
+            // 背景分頁不 reload（timer 被瀏覽器 throttle 且可能重複下單）
+            if (document.visibilityState === 'hidden') {
+                // 等分頁回到前景再 reload
+                document.addEventListener('visibilitychange', () => {
+                    if (!fired && document.visibilityState === 'visible') location.reload();
+                }, { once: true });
+                setStatus('背景分頁暫停，切回此頁繼續', '#888');
+                return;
+            }
             refreshTimer = setTimeout(() => {
                 if (!fired) location.reload();
             }, 100);
