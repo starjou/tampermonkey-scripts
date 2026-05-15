@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      2.1
+// @version      2.2
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
@@ -38,8 +38,8 @@
 
     // ── 頁面類型判斷（URL-based，SSR full reload 可直接判斷） ────
     const path           = location.pathname;
-    const isStep1Page    = /\/cart$/.test(path);                  // 購物車確認頁
     const isStep2Page    = /\/cart\/payinfo/.test(path);          // 付款頁
+    const isStep1Page    = !isStep2Page && /\/cart(\/|\?|$)/.test(path); // 購物車頁（排除 payinfo）
     const isCheckoutPage = isStep1Page || isStep2Page;
 
     // ── 狀態 ─────────────────────────────────────────────────────
@@ -148,6 +148,7 @@
 
     // ── 自動重整 ─────────────────────────────────────────────────
     function scheduleReload() {
+        if (isCheckoutPage) return; // 結帳頁絕對不 reload
         stopAutoRefresh();
         function doReload() {
             if (fired) return;
