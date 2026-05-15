@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      3.0
+// @version      3.1
 // @description  PChome 24h 全自動搶購：商品頁搶購 → 購物車結帳 → 付款頁填 CVV
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
@@ -54,10 +54,7 @@
     }
 
     function simulateClick(el) {
-        const opts = { bubbles: true, cancelable: true, view: window };
-        el.dispatchEvent(new MouseEvent('mousedown', opts));
-        el.dispatchEvent(new MouseEvent('mouseup',   opts));
-        el.dispatchEvent(new MouseEvent('click',     opts));
+        el.click();
     }
 
     function setNativeValue(el, val) {
@@ -272,8 +269,10 @@
             const btn = document.querySelector(SEL_BUY_BTN) || document.querySelector(SEL_ADD_BTN);
             if (!btn) return false;
             fired = true;
-            const target = btn.closest(SEL_BTN_WRAP) || btn;
-            simulateClick(target);
+            // 先點 wrapper（React handler 可能在此），再點 button 本身
+            const wrapper = btn.closest(SEL_BTN_WRAP);
+            if (wrapper) wrapper.click();
+            btn.click();
             setStatus('已點擊購買按鈕', '#0f0');
             return true;
         }
