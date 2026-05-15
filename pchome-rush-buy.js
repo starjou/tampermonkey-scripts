@@ -1,14 +1,13 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      1.7
+// @version      1.8
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
 // @match        https://24h.pchome.com.tw/store/prod/*
-// @match        https://24h.pchome.com.tw/cart/*
-// @match        https://24h.pchome.com.tw/checkout/*
-// @match        https://24h.pchome.com.tw/order/*
+// @match        https://24h.pchome.com.tw/*/cart
+// @match        https://24h.pchome.com.tw/*/cart/payinfo*
 // @run-at       document-end
 // @updateURL    https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/pchome-rush-buy.js
 // @downloadURL  https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/pchome-rush-buy.js
@@ -35,8 +34,11 @@
     const STEP2_BTN = 'button[data-regression="step2-checkout-btn"]'; // 付款頁「確認付款」
     const CVV_INPUT = 'input[placeholder="CVC"]';                     // CVV 欄位
 
-    // ── 頁面類型判斷 ─────────────────────────────────────────────
-    const isCheckoutPage = /\/(cart|checkout|order)\//.test(location.pathname);
+    // ── 頁面類型判斷（URL-based，SSR full reload 可直接判斷） ────
+    const path           = location.pathname;
+    const isStep1Page    = /\/cart$/.test(path);                  // 購物車確認頁
+    const isStep2Page    = /\/cart\/payinfo/.test(path);          // 付款頁
+    const isCheckoutPage = isStep1Page || isStep2Page;
 
     // ── 狀態 ─────────────────────────────────────────────────────
     let countdownTimer = null;
@@ -95,13 +97,11 @@
 
     // ── 結帳流程（購物車頁 → 付款頁） ────────────────────────────
     function runCheckoutFlow() {
-        // Step 1：購物車頁，等「結帳」按鈕出現就點
-        if (!document.querySelector(STEP2_BTN) && !document.querySelector(CVV_INPUT)) {
-            setStatus('等待結帳按鈕…', '#888');
-            waitForEl(STEP1_BTN, btn => {
-                setStatus('正在結帳…', '#ff0');
-                btn.click();
-            });
+        // Step 1：購物車頁（DOM 有 step1-checkout-btn）
+        if (isStep1Page) {
+            setStatus('Step 1：自動結帳中…', '#ff0');
+            const btn = document.querySelector(STEP1_BTN);
+            if (btn) btn.click();
             return;
         }
 
@@ -314,7 +314,11 @@
                 </label>
             </div>
 
-            <div id="rush-status">尚未啟動</div>
+            <div id="rush-status">${
+                isStep2Page ? '📄 付款頁' :
+                isStep1Page ? '📄 購物車頁' :
+                              '📄 商品頁'
+            }</div>
 
             ${!isCheckoutPage ? `<button id="rush-now-btn">立即搶購</button>` : ''}
             <button id="rush-fill-cvv-btn">手動填入 CVV</button>
