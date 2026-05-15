@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      2.2
+// @version      2.3
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
@@ -138,10 +138,12 @@
     // ── 商品頁：購買 ─────────────────────────────────────────────
     function doBuy() {
         if (fired) return;
-        const target = findEl(BUY_SELECTORS);
-        if (!target) { setStatus('找不到購買按鈕', '#f88'); return; }
+        const btn = findEl(BUY_SELECTORS);
+        if (!btn) { setStatus('找不到購買按鈕', '#f88'); return; }
         fired = true;
         setStatus('正在搶購…', '#ff0');
+        // click handler 可能在外層 wrapper div，往上找再點
+        const target = btn.closest('.c-compoundBtnTool') || btn;
         target.click();
         setStatus('已點擊購買按鈕', '#0f0');
     }
