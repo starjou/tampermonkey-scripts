@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      1.8
+// @version      1.9
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
