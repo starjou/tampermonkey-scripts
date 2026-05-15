@@ -8,6 +8,8 @@
 // @match        https://24h.pchome.com.tw/store/prod/*
 // @match        https://24h.pchome.com.tw/*/cart
 // @match        https://24h.pchome.com.tw/*/cart/payinfo*
+// @match        https://ecssl.pchome.com.tw/*/cart
+// @match        https://ecssl.pchome.com.tw/*/cart/payinfo*
 // @run-at       document-end
 // @updateURL    https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/pchome-rush-buy.js
 // @downloadURL  https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/pchome-rush-buy.js
