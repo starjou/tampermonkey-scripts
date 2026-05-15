@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      1.6
-// @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、CVV 自動填入
+// @version      1.7
+// @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
 // @match        https://24h.pchome.com.tw/store/prod/*
@@ -16,70 +16,32 @@
 (function () {
     'use strict';
 
-    // ── 設定 key（localStorage 儲存非敏感設定） ──────────────────
+    // ── 設定 key ─────────────────────────────────────────────────
     const KEY_TARGET_TIME  = 'pchome_rush_target_time';
     const KEY_AUTO_BUY     = 'pchome_rush_auto_buy';
     const KEY_AUTO_REFRESH = 'pchome_rush_auto_refresh';
     const KEY_AUTO_CVV     = 'pchome_rush_auto_cvv';
-    // CVV 只存 sessionStorage（關閉分頁即清除，不跨分頁）
-    const SKEY_CVV         = 'pchome_rush_cvv';
+    const SKEY_CVV         = 'pchome_rush_cvv'; // sessionStorage，關分頁即清除
 
-    // ── 購買按鈕 selectors ───────────────────────────────────────
+    // ── 商品頁按鈕 selectors ─────────────────────────────────────
     const BUY_SELECTORS = [
-        // PChome 24h：開賣時 data-regression 從 "" 變成具體值
         'button[data-regression="product_button_buyNow"]:not([disabled])',
         'button[data-regression="product_button_addToCart"]:not([disabled])',
-        // 備用
         '.c-addToCartBtn__group button:not([disabled])',
-        '[data-ga-action="buy"]',
-        '#js-btn-buynow',
-        '.btn-buy',
-    ];
-    const CART_SELECTORS = [
-        'button[data-regression="product_button_addToCart"]:not([disabled])',
-        '.c-compoundBtnTool--addToCard button:not([disabled])',
-        '[data-ga-action="cart"]',
-        '#js-btn-addCart',
-        '.btn-cart',
     ];
 
+    // ── 結帳流程各步驟 selectors ─────────────────────────────────
+    const STEP1_BTN = 'button[data-regression="step1-checkout-btn"]'; // 購物車頁「結帳」
+    const STEP2_BTN = 'button[data-regression="step2-checkout-btn"]'; // 付款頁「確認付款」
+    const CVV_INPUT = 'input[placeholder="CVC"]';                     // CVV 欄位
 
-    // ── CVV 輸入框 selectors ─────────────────────────────────────
-    const CVV_SELECTORS = [
-        'input[name="cvv"]',
-        'input[name="CVV"]',
-        'input[name="cvc"]',
-        'input[name="CVC"]',
-        'input[name="securityCode"]',
-        'input[name="cardCvc"]',
-        'input[placeholder*="CVV"]',
-        'input[placeholder*="CVC"]',
-        'input[placeholder*="安全碼"]',
-        'input[placeholder*="背面碼"]',
-        'input[placeholder*="驗證碼"][maxlength="3"]',
-        'input[maxlength="3"][type="number"]',
-        'input[maxlength="3"][type="password"]',
-        'input[maxlength="3"][type="tel"]',
-    ];
-
-    // ── 結帳送出按鈕 selectors ───────────────────────────────────
-    const SUBMIT_SELECTORS = [
-        'button[type="submit"]',
-        'input[type="submit"]',
-        '[class*="pay-btn"]',
-        '[class*="submit-btn"]',
-        '[class*="confirm-btn"]',
-        '[data-action="pay"]',
-        'button[class*="pay"]',
-    ];
+    // ── 頁面類型判斷 ─────────────────────────────────────────────
+    const isCheckoutPage = /\/(cart|checkout|order)\//.test(location.pathname);
 
     // ── 狀態 ─────────────────────────────────────────────────────
     let countdownTimer = null;
     let refreshTimer   = null;
-    let cvvObserver    = null;
     let fired          = false;
-
-    const isCheckoutPage = /\/(cart|checkout|order)\//.test(location.pathname);
 
     // ── 工具 ─────────────────────────────────────────────────────
     function load(key, fallback) {
@@ -88,8 +50,8 @@
     }
     function save(key, value) { localStorage.setItem(key, value); }
 
-    function findEl(selectors, root = document) {
-        for (const sel of selectors) {
+    function findEl(sels, root = document) {
+        for (const sel of (Array.isArray(sels) ? sels : [sels])) {
             const el = root.querySelector(sel);
             if (el && el.offsetParent !== null) return el;
         }
@@ -103,89 +65,94 @@
 
     // React 受控元件相容的填值
     function setNativeValue(el, value) {
-        const proto  = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
         proto.set.call(el, value);
         el.dispatchEvent(new Event('input',  { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    // ── CVV 自動填入 ─────────────────────────────────────────────
+    // ── 等待某個 selector 出現後呼叫 cb ──────────────────────────
+    function waitForEl(sel, cb) {
+        const el = document.querySelector(sel);
+        if (el) { cb(el); return; }
+        const obs = new MutationObserver(() => {
+            const found = document.querySelector(sel);
+            if (found) { obs.disconnect(); cb(found); }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+    }
+
+    // ── CVV 填入 ─────────────────────────────────────────────────
     function fillCVV() {
         const cvv = sessionStorage.getItem(SKEY_CVV);
         if (!cvv) return false;
-
-        // 先嘗試頁面本體
-        let field = findEl(CVV_SELECTORS);
-
-        // 再嘗試同源 iframe
-        if (!field) {
-            for (const iframe of document.querySelectorAll('iframe')) {
-                try {
-                    field = findEl(CVV_SELECTORS, iframe.contentDocument);
-                    if (field) break;
-                } catch (_) { /* cross-origin iframe，跳過 */ }
-            }
-        }
-
+        let field = document.querySelector(CVV_INPUT);
         if (!field) return false;
-
         setNativeValue(field, cvv);
         field.focus();
-        setStatus('CVV 已填入', '#0f0');
         return true;
     }
 
-    function watchForCVVField() {
-        if (cvvObserver) return;
-        cvvObserver = new MutationObserver(() => {
-            if (fillCVV()) {
-                cvvObserver.disconnect();
-                cvvObserver = null;
-                // 填完後嘗試自動送出
-                if (load(KEY_AUTO_CVV, 'false') === 'true') {
-                    setTimeout(() => {
-                        const btn = findEl(SUBMIT_SELECTORS);
-                        if (btn) { btn.click(); setStatus('已送出付款', '#0f0'); }
-                    }, 400);
-                }
-            }
-        });
-        cvvObserver.observe(document.body, { childList: true, subtree: true });
-        // 立即嘗試一次（欄位可能已存在）
-        fillCVV();
-    }
-
-    // ── 購買流程 ─────────────────────────────────────────────────
-    function doBuy() {
-        if (fired) return;
-
-        const target = findEl(BUY_SELECTORS) || findEl(CART_SELECTORS);
-        if (!target) {
-            setStatus('找不到購買按鈕', '#f88');
+    // ── 結帳流程（購物車頁 → 付款頁） ────────────────────────────
+    function runCheckoutFlow() {
+        // Step 1：購物車頁，等「結帳」按鈕出現就點
+        if (!document.querySelector(STEP2_BTN) && !document.querySelector(CVV_INPUT)) {
+            setStatus('等待結帳按鈕…', '#888');
+            waitForEl(STEP1_BTN, btn => {
+                setStatus('正在結帳…', '#ff0');
+                btn.click();
+            });
             return;
         }
 
+        // Step 2：付款頁，填 CVV 再送出
+        const autoCvv = load(KEY_AUTO_CVV, 'false') === 'true';
+
+        function doPayment() {
+            const cvvFilled = fillCVV();
+            if (!cvvFilled) {
+                setStatus('請在面板輸入 CVV', '#f88');
+                return;
+            }
+            setStatus('CVV 已填入', '#0f0');
+            if (!autoCvv) return;
+            setTimeout(() => {
+                const submitBtn = document.querySelector(STEP2_BTN);
+                if (submitBtn) {
+                    submitBtn.click();
+                    setStatus('已送出付款', '#0f0');
+                } else {
+                    setStatus('找不到確認付款按鈕', '#f88');
+                }
+            }, 300);
+        }
+
+        // CVV 欄位可能還沒出現
+        if (document.querySelector(CVV_INPUT)) {
+            doPayment();
+        } else {
+            setStatus('等待付款欄位…', '#888');
+            waitForEl(CVV_INPUT, () => doPayment());
+        }
+    }
+
+    // ── 商品頁：購買 ─────────────────────────────────────────────
+    function doBuy() {
+        if (fired) return;
+        const target = findEl(BUY_SELECTORS);
+        if (!target) { setStatus('找不到購買按鈕', '#f88'); return; }
         fired = true;
         setStatus('正在搶購…', '#ff0');
         target.click();
-
-        setTimeout(() => {
-            const confirm = document.querySelector(
-                '.modal .btn-primary, [class*="confirm"], [class*="submit"]'
-            );
-            if (confirm) { confirm.click(); setStatus('已送出確認', '#0f0'); }
-            else          { setStatus('已點擊購買按鈕', '#0f0'); }
-        }, 600);
+        setStatus('已點擊購買按鈕', '#0f0');
     }
 
-    // ── 自動重整：等頁面按鈕容器出現後才 reload，避免無窮快速迴圈 ──
+    // ── 自動重整 ─────────────────────────────────────────────────
     function scheduleReload() {
         stopAutoRefresh();
         function doReload() {
             if (fired) return;
-            refreshTimer = setTimeout(() => {
-                if (!fired) location.reload();
-            }, 100);
+            refreshTimer = setTimeout(() => { if (!fired) location.reload(); }, 100);
         }
         if (document.querySelector('.c-addToCartBtn__group')) {
             doReload();
@@ -234,8 +201,7 @@
                 padding: 14px 16px;
                 width: 240px;
                 font-family: 'Segoe UI', Arial, sans-serif;
-                font-size: 13px;
-                color: #eee;
+                font-size: 13px; color: #eee;
                 box-shadow: 0 4px 24px rgba(0,0,0,.5);
                 user-select: none;
             }
@@ -245,26 +211,20 @@
                 display: flex; align-items: center; gap: 6px;
             }
             #rush-panel label {
-                display: block;
-                margin-top: 8px;
+                display: block; margin-top: 8px;
                 font-size: 12px; color: #aaa;
             }
             #rush-panel input[type="datetime-local"],
-            #rush-panel input[type="number"],
             #rush-panel input[type="password"] {
-                width: 100%;
-                margin-top: 4px;
+                width: 100%; margin-top: 4px;
                 padding: 5px 7px;
-                background: #2a2a38;
-                border: 1px solid #555;
-                border-radius: 6px;
-                color: #fff; font-size: 13px;
+                background: #2a2a38; border: 1px solid #555;
+                border-radius: 6px; color: #fff; font-size: 13px;
                 box-sizing: border-box;
             }
             #rush-panel .row {
                 display: flex; align-items: center;
-                justify-content: space-between;
-                margin-top: 8px;
+                justify-content: space-between; margin-top: 8px;
             }
             #rush-panel .toggle {
                 position: relative; width: 36px; height: 20px; flex-shrink: 0;
@@ -277,8 +237,7 @@
             }
             #rush-panel .toggle .slider::before {
                 content: ''; position: absolute;
-                width: 14px; height: 14px;
-                left: 3px; top: 3px;
+                width: 14px; height: 14px; left: 3px; top: 3px;
                 background: #fff; border-radius: 50%; transition: .2s;
             }
             #rush-panel .toggle input:checked + .slider { background: #e83; }
@@ -312,8 +271,8 @@
 
         const targetTimeStr = load(KEY_TARGET_TIME, '');
         const autoBuy       = load(KEY_AUTO_BUY,     'false') === 'true';
-        const autoRefresh   = load(KEY_AUTO_REFRESH, 'true') === 'true';
-        const autoCvv       = load(KEY_AUTO_CVV,      'false') === 'true';
+        const autoRefresh   = load(KEY_AUTO_REFRESH, 'true')  === 'true';
+        const autoCvv       = load(KEY_AUTO_CVV,     'false') === 'true';
 
         const panel = document.createElement('div');
         panel.id = 'rush-panel';
@@ -323,9 +282,7 @@
             ${!isCheckoutPage ? `
             <label>目標時間</label>
             <input type="datetime-local" id="rush-time" step="1" value="${targetTimeStr}">
-
             <hr class="divider">
-
             <div class="row">
                 <span>定時自動購買</span>
                 <label class="toggle">
@@ -333,7 +290,6 @@
                     <span class="slider"></span>
                 </label>
             </div>
-
             <div class="row">
                 <span>自動重整頁面</span>
                 <label class="toggle">
@@ -341,83 +297,68 @@
                     <span class="slider"></span>
                 </label>
             </div>
-
             ` : ''}
 
             <hr class="divider">
 
             <label>信用卡 CVV（3 碼）</label>
-            <input type="password" id="rush-cvv" maxlength="4" placeholder="●●●" autocomplete="off"
-                value="${sessionStorage.getItem(SKEY_CVV) || ''}">
-            <div class="hint">僅存於此分頁記憶體，關閉分頁即清除</div>
+            <input type="password" id="rush-cvv" maxlength="3" placeholder="●●●"
+                autocomplete="off" value="${sessionStorage.getItem(SKEY_CVV) || ''}">
+            <div class="hint">僅存於此分頁，關閉分頁即清除</div>
 
             <div class="row" style="margin-top:8px">
-                <span>填入後自動送出</span>
+                <span>自動填入並送出</span>
                 <label class="toggle">
                     <input type="checkbox" id="rush-auto-cvv" ${autoCvv ? 'checked' : ''}>
                     <span class="slider"></span>
                 </label>
             </div>
 
-            <div id="rush-status">${isCheckoutPage ? '等待付款欄位…' : '尚未啟動'}</div>
+            <div id="rush-status">尚未啟動</div>
 
             ${!isCheckoutPage ? `<button id="rush-now-btn">立即搶購</button>` : ''}
             <button id="rush-fill-cvv-btn">手動填入 CVV</button>
         `;
         document.body.appendChild(panel);
 
-        // ── 元素參照 ────────────────────────────────────────────
-        const cvvInput    = panel.querySelector('#rush-cvv');
-        const autoCvvChk  = panel.querySelector('#rush-auto-cvv');
-        const fillCvvBtn  = panel.querySelector('#rush-fill-cvv-btn');
+        // ── CVV 輸入 ─────────────────────────────────────────────
+        const cvvInput   = panel.querySelector('#rush-cvv');
+        const autoCvvChk = panel.querySelector('#rush-auto-cvv');
+        const fillCvvBtn = panel.querySelector('#rush-fill-cvv-btn');
 
-        // 儲存 CVV 到 sessionStorage（分頁關閉即清除）
         cvvInput.addEventListener('input', () => {
-            const v = cvvInput.value.replace(/\D/g, '').slice(0, 4);
+            const v = cvvInput.value.replace(/\D/g, '').slice(0, 3);
             cvvInput.value = v;
             if (v) sessionStorage.setItem(SKEY_CVV, v);
             else   sessionStorage.removeItem(SKEY_CVV);
         });
-
-        autoCvvChk.addEventListener('change', () => {
-            save(KEY_AUTO_CVV, autoCvvChk.checked);
-        });
-
+        autoCvvChk.addEventListener('change', () => save(KEY_AUTO_CVV, autoCvvChk.checked));
         fillCvvBtn.addEventListener('click', () => {
-            if (!sessionStorage.getItem(SKEY_CVV)) {
-                setStatus('請先輸入 CVV', '#f88'); return;
-            }
+            if (!sessionStorage.getItem(SKEY_CVV)) { setStatus('請先輸入 CVV', '#f88'); return; }
             if (!fillCVV()) setStatus('找不到 CVV 欄位', '#f88');
         });
 
-        // ── 商品頁專用 ──────────────────────────────────────────
+        // ── 商品頁邏輯 ───────────────────────────────────────────
         if (!isCheckoutPage) {
-            const timeInput    = panel.querySelector('#rush-time');
-            const autoBuyChk   = panel.querySelector('#rush-auto-buy');
-            const autoRefChk   = panel.querySelector('#rush-auto-refresh');
-const nowBtn       = panel.querySelector('#rush-now-btn');
+            const timeInput  = panel.querySelector('#rush-time');
+            const autoBuyChk = panel.querySelector('#rush-auto-buy');
+            const autoRefChk = panel.querySelector('#rush-auto-refresh');
+            const nowBtn     = panel.querySelector('#rush-now-btn');
 
             function checkAndAct() {
-                const readyNow = findEl(BUY_SELECTORS) || findEl(CART_SELECTORS);
-
+                const ready = findEl(BUY_SELECTORS);
                 if (autoBuyChk.checked && timeInput.value) {
                     const ts = new Date(timeInput.value).getTime();
-                    if (readyNow) {
-                        doBuy();
-                    } else if (ts > Date.now()) {
-                        startCountdown(ts);
-                    } else {
-                        setStatus('時間已過，請重新設定', '#f88');
-                    }
-                } else if (readyNow) {
+                    if (ready)             { doBuy(); }
+                    else if (ts > Date.now()) { startCountdown(ts); }
+                    else                   { setStatus('時間已過，請重新設定', '#f88'); }
+                } else if (ready) {
                     doBuy();
+                } else if (autoRefChk.checked) {
+                    setStatus('等待開賣，重整中…', '#fa0');
+                    scheduleReload();
                 } else {
-                    if (autoRefChk.checked) {
-                        setStatus('等待開賣，重整中…', '#fa0');
-                        scheduleReload();
-                    } else {
-                        setStatus('尚未啟動');
-                    }
+                    setStatus('尚未啟動');
                 }
             }
 
@@ -425,41 +366,28 @@ const nowBtn       = panel.querySelector('#rush-now-btn');
                 save(KEY_TARGET_TIME,  timeInput.value);
                 save(KEY_AUTO_BUY,     autoBuyChk.checked);
                 save(KEY_AUTO_REFRESH, autoRefChk.checked);
-
                 stopCountdown(); stopAutoRefresh(); fired = false;
 
-                // 等按鈕容器出現再判斷（SSR 已存在則立即執行，CSR 則等 Observer）
-                waitForBtnContainer(checkAndAct);
-            }
-
-            // 等 .c-addToCartBtn__group 出現才執行 cb
-            function waitForBtnContainer(cb) {
-                if (document.querySelector('.c-addToCartBtn__group')) {
-                    cb();
-                    return;
+                // 等按鈕容器渲染完再判斷
+                const container = '.c-addToCartBtn__group';
+                if (document.querySelector(container)) {
+                    checkAndAct();
+                } else {
+                    setStatus('等待頁面渲染…', '#888');
+                    waitForEl(container, checkAndAct);
                 }
-                setStatus('等待頁面按鈕渲染…', '#888');
-                const obs = new MutationObserver(() => {
-                    if (document.querySelector('.c-addToCartBtn__group')) {
-                        obs.disconnect();
-                        cb();
-                    }
-                });
-                obs.observe(document.body, { childList: true, subtree: true });
             }
 
             timeInput.addEventListener('change', applySettings);
             autoBuyChk.addEventListener('change', applySettings);
             autoRefChk.addEventListener('change', applySettings);
             nowBtn.addEventListener('click', () => { fired = false; doBuy(); });
-
             applySettings();
         }
 
-        // ── 結帳頁：自動監聽 CVV 欄位 ───────────────────────────
-        if (isCheckoutPage) watchForCVVField();
+        // ── 結帳頁邏輯 ───────────────────────────────────────────
+        if (isCheckoutPage) runCheckoutFlow();
 
-        // ── 拖曳 ────────────────────────────────────────────────
         makeDraggable(panel, panel.querySelector('#rush-drag-handle'));
     }
 
