@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      1.9
+// @version      2.0
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
@@ -99,11 +99,13 @@
 
     // ── 結帳流程（購物車頁 → 付款頁） ────────────────────────────
     function runCheckoutFlow() {
-        // Step 1：購物車頁（DOM 有 step1-checkout-btn）
+        // Step 1：購物車頁，等按鈕渲染完再點
         if (isStep1Page) {
-            setStatus('Step 1：自動結帳中…', '#ff0');
-            const btn = document.querySelector(STEP1_BTN);
-            if (btn) btn.click();
+            setStatus('Step 1：等待結帳按鈕…', '#888');
+            waitForEl(STEP1_BTN, btn => {
+                setStatus('Step 1：自動結帳中…', '#ff0');
+                btn.click();
+            });
             return;
         }
 
