@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PChome 24h 搶購助手
 // @namespace    https://www.jk-web.com/
-// @version      2.0
+// @version      2.1
 // @description  在指定時間自動搶購 PChome 24h 商品，支援倒數計時、自動重整、全流程自動結帳
 // @author       Jacky Jou
 // @match        https://24h.pchome.com.tw/prod/*
@@ -120,15 +120,10 @@
             }
             setStatus('CVV 已填入', '#0f0');
             if (!autoCvv) return;
-            setTimeout(() => {
-                const submitBtn = document.querySelector(STEP2_BTN);
-                if (submitBtn) {
-                    submitBtn.click();
-                    setStatus('已送出付款', '#0f0');
-                } else {
-                    setStatus('找不到確認付款按鈕', '#f88');
-                }
-            }, 300);
+            waitForEl(STEP2_BTN, btn => {
+                btn.click();
+                setStatus('已送出付款', '#0f0');
+            });
         }
 
         // CVV 欄位可能還沒出現
