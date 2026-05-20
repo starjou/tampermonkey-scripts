@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.7
+// @version      1.8
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -99,6 +99,13 @@
 
     function findMuteBtn(root) {
         for (let i = 0; i < 15; i++) {
+            // New IG structure: div[role="button"] wraps the volume slider
+            const slider = root?.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
+            if (slider) {
+                const btn = slider.closest('[role="button"]');
+                if (btn) return btn;
+            }
+            // Old structure: button with aria-label
             for (const sel of MUTE_BTN_SELECTORS) {
                 const btn = root?.querySelector(sel);
                 if (btn) return btn;
@@ -113,7 +120,7 @@
         for (let i = 0; i < 15; i++) {
             for (const sel of allSels) {
                 const svg = root?.querySelector(sel);
-                if (svg) return svg.closest('button') || svg.parentNode;
+                if (svg) return svg.closest('[role="button"]') || svg.closest('button') || svg.closest('a') || svg.parentNode;
             }
             root = root?.parentElement;
         }
