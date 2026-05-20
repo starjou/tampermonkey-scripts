@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.12
+// @version      1.13
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -140,11 +140,14 @@
     }
 
     function positionFSBtnNextTo(wrap, muteBtn, videoParent) {
-        const mr = muteBtn.getBoundingClientRect();
+        // Use the SVG icon inside muteBtn for accurate position — the container div
+        // may include a volume slider and be much wider than the visible icon
+        const ref = muteBtn.querySelector('svg') || muteBtn;
+        const mr = ref.getBoundingClientRect();
         const pr = videoParent.getBoundingClientRect();
         wrap.style.left = 'auto';
-        wrap.style.right = (pr.right - mr.left + 8) + 'px';
-        wrap.style.bottom = Math.max(0, pr.bottom - mr.bottom) + 'px';
+        wrap.style.right = Math.max(8, pr.right - mr.left + 8) + 'px';
+        wrap.style.bottom = Math.max(8, pr.bottom - mr.bottom) + 'px';
     }
 
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
@@ -205,7 +208,9 @@
         const trySetup = (muteBtn) => {
             done();
             clickUnmute(v);
-            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), muteBtn, t1Click, 'ig-fs-btn-t1');
+            // Don't pass muteBtn for positioning on Type 1 — default CSS (bottom:12px right:12px)
+            // is more reliable across IG A/B variants than positionFSBtnNextTo
+            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click, 'ig-fs-btn-t1');
         };
 
         const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
