@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.9
+// @version      1.10
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -247,6 +247,11 @@
             if (v.dataset.igObsT1) return;
             v.dataset.igObsT1 = '1';
             t1VideoObs.observe(v);
+            // On /p/ and /reel/ pages, also attempt direct setup after layout settles,
+            // in case IntersectionObserver fired while the video was still 0×0
+            if (location.href.includes('/p/') || location.href.includes('/reel/')) {
+                setTimeout(() => { if (isType1Video(v)) setupType1Video(v); }, 600);
+            }
         });
     });
     t1DomObs.observe(document.body, { childList: true, subtree: true });
