@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.11
+// @version      1.12
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -231,31 +231,31 @@
         });
     });
 
+    // ── SPA 換頁偵測：hook pushState（比 MutationObserver 偵 URL 更可靠）──
     let t1LastHref = location.href;
-
-    const t1DomObs = new MutationObserver(() => {
-        // Re-scan on SPA navigation (e.g. feed → post modal, or prev/next within modal)
-        if (t1LastHref !== location.href) {
-            t1LastHref = location.href;
-            if (location.href.includes('/p/') || location.href.includes('/reel/')) {
-                // Immediate pass (video may already be sized)
+    function t1OnUrlChange() {
+        if (location.href === t1LastHref) return;
+        t1LastHref = location.href;
+        if (location.href.includes('/p/') || location.href.includes('/reel/')) {
+            setTimeout(() => {
                 document.querySelectorAll('video').forEach(v => {
                     if (isType1Video(v)) setupType1Video(v);
                 });
-                // Delayed pass: video added before URL changed may be 0×0 at this point
-                setTimeout(() => {
-                    document.querySelectorAll('video').forEach(v => {
-                        if (isType1Video(v)) setupType1Video(v);
-                    });
-                }, 600);
-            }
+            }, 500);
         }
+    }
+    const _origPushState = history.pushState.bind(history);
+    history.pushState = function (...args) { _origPushState(...args); t1OnUrlChange(); };
+    window.addEventListener('popstate', t1OnUrlChange);
+
+    // ── MutationObserver：監控新 video 加入 DOM ──────────────
+    const t1DomObs = new MutationObserver(() => {
         document.querySelectorAll('video').forEach(v => {
             if (v.dataset.igObsT1) return;
             v.dataset.igObsT1 = '1';
             t1VideoObs.observe(v);
-            // Always retry after layout settles; covers direct /p/ open and cases where
-            // video was added before pushState so IntersectionObserver saw the old URL
+            // Retry after layout settles; catches direct /p/ open and cases where
+            // video was inserted before pushState fired
             setTimeout(() => { if (isType1Video(v)) setupType1Video(v); }, 600);
         });
     });
@@ -263,6 +263,14 @@
     document.querySelectorAll('video').forEach(v => {
         v.dataset.igObsT1 = '1'; t1VideoObs.observe(v);
     });
+
+    // ── Polling 補底：兜住所有漏網的情況 ──────────────────────
+    setInterval(() => {
+        if (!location.href.includes('/p/') && !location.href.includes('/reel/')) return;
+        document.querySelectorAll('video').forEach(v => {
+            if (isType1Video(v)) setupType1Video(v);
+        });
+    }, 1500);
 
     // ════════════════════════════════════════════════════════
     // TYPE 2：/reels/ 捲動介面
