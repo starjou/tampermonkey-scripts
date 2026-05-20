@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.10
+// @version      1.11
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -238,20 +238,25 @@
         if (t1LastHref !== location.href) {
             t1LastHref = location.href;
             if (location.href.includes('/p/') || location.href.includes('/reel/')) {
+                // Immediate pass (video may already be sized)
                 document.querySelectorAll('video').forEach(v => {
                     if (isType1Video(v)) setupType1Video(v);
                 });
+                // Delayed pass: video added before URL changed may be 0×0 at this point
+                setTimeout(() => {
+                    document.querySelectorAll('video').forEach(v => {
+                        if (isType1Video(v)) setupType1Video(v);
+                    });
+                }, 600);
             }
         }
         document.querySelectorAll('video').forEach(v => {
             if (v.dataset.igObsT1) return;
             v.dataset.igObsT1 = '1';
             t1VideoObs.observe(v);
-            // On /p/ and /reel/ pages, also attempt direct setup after layout settles,
-            // in case IntersectionObserver fired while the video was still 0×0
-            if (location.href.includes('/p/') || location.href.includes('/reel/')) {
-                setTimeout(() => { if (isType1Video(v)) setupType1Video(v); }, 600);
-            }
+            // Always retry after layout settles; covers direct /p/ open and cases where
+            // video was added before pushState so IntersectionObserver saw the old URL
+            setTimeout(() => { if (isType1Video(v)) setupType1Video(v); }, 600);
         });
     });
     t1DomObs.observe(document.body, { childList: true, subtree: true });
