@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.20
+// @version      1.21
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -180,6 +180,57 @@
     }
 
     // ════════════════════════════════════════════════════════
+    // TYPE 0：首頁 / feed（多 video 並存，無 URL 變化）
+    // ════════════════════════════════════════════════════════
+
+    function isHomeFeed() { return location.pathname === '/'; }
+
+    function setupType0Video(v) {
+        if (!isHomeFeed()) return;
+        const r = v.getBoundingClientRect();
+        if (r.width < 100 || r.height < 100) return;
+        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
+        if (v._igFsT0Setting) return;
+        v._igFsT0Setting = true;
+
+        const done = () => { v._igFsT0Setting = false; };
+
+        const t0Click = () => {
+            enableBlock(v);
+            v.requestFullscreen().catch(() => disableBlock());
+        };
+        const trySetup = (muteBtn) => {
+            done();
+            clickUnmute(v);
+            attachFSBtnToVideo(v, 'IGFsBtnT0_' + Date.now(), muteBtn, t0Click);
+        };
+
+        const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
+        if (muteBtn) { trySetup(muteBtn); return; }
+
+        const watchTarget = v.closest('article') || v.parentElement;
+        const mo = new MutationObserver(() => {
+            const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
+            if (btn) { mo.disconnect(); trySetup(btn); }
+        });
+        mo.observe(watchTarget, { childList: true, subtree: true });
+        setTimeout(() => {
+            mo.disconnect();
+            done();
+            if (!(v._igFsBtnId && document.getElementById(v._igFsBtnId))) {
+                const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
+                attachFSBtnToVideo(v, 'IGFsBtnT0_' + Date.now(), btn, t0Click);
+            }
+        }, 2000);
+    }
+
+    const t0VideoObs = new IntersectionObserver((entries) => {
+        entries.forEach(({ isIntersecting, target: v }) => {
+            if (isIntersecting) setupType0Video(v);
+        });
+    });
+
+    // ════════════════════════════════════════════════════════
     // TYPE 1：/p/ 或 /reel/ 頁面
     // ════════════════════════════════════════════════════════
 
@@ -237,11 +288,13 @@
         if (location.href === t1LastHref) return;
         t1LastHref = location.href;
         if (location.href.includes('/p/') || location.href.includes('/reel/')) {
-            setTimeout(() => {
+            // Multiple retries: video may be pre-loaded from feed with igObsT1 already set,
+            // so the 600ms callback fired when URL was still / — scan again after URL settles
+            [300, 800, 1500].forEach(delay => setTimeout(() => {
                 document.querySelectorAll('video').forEach(v => {
                     if (isType1Video(v)) setupType1Video(v);
                 });
-            }, 500);
+            }, delay));
         }
     }
     const _origPushState = history.pushState.bind(history);
@@ -254,14 +307,18 @@
             if (v.dataset.igObsT1) return;
             v.dataset.igObsT1 = '1';
             t1VideoObs.observe(v);
-            // Retry after layout settles; catches direct /p/ open and cases where
-            // video was inserted before pushState fired
-            setTimeout(() => { if (isType1Video(v)) setupType1Video(v); }, 600);
+            t0VideoObs.observe(v);
+            setTimeout(() => {
+                if (isType1Video(v)) setupType1Video(v);
+                else if (isHomeFeed()) setupType0Video(v);
+            }, 600);
         });
     });
     t1DomObs.observe(document.body, { childList: true, subtree: true });
     document.querySelectorAll('video').forEach(v => {
-        v.dataset.igObsT1 = '1'; t1VideoObs.observe(v);
+        v.dataset.igObsT1 = '1';
+        t1VideoObs.observe(v);
+        t0VideoObs.observe(v);
     });
 
     // ── Polling 補底：兜住所有漏網的情況 ──────────────────────
