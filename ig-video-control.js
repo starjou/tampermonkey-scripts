@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.25
+// @version      1.26
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -134,15 +134,9 @@
         if (btn && isMuted(btn.closest('[role]') || btn.parentElement)) btn.click();
     }
 
-    function videoHasFSBtn(v) {
-        // Primary: button was inserted before muteBtn inside its parent
-        const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
-        if (muteBtn?.parentElement?.querySelector('.ig-fs-btn')) return true;
-        // Fallback: button was absolute-positioned as a direct child of videoParent.
-        // Use :scope > to avoid matching buttons from other DOM contexts (e.g. a
-        // feed button still in the DOM when the same <video> moves into a modal).
-        return !!(v.parentElement?.querySelector(':scope > .ig-fs-btn'));
-    }
+    // Direct element reference check — immune to cross-context DOM traversal ambiguity.
+    // v._igFsBtnEl is set by attachFSBtnToVideo and cleared when the element is removed.
+    function videoHasFSBtn(v) { return !!(v._igFsBtnEl?.isConnected); }
 
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
     const FS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
@@ -160,7 +154,7 @@
         btn.type = 'button';
         btn.title = 'Fullscreen';
         btn.innerHTML = FS_SVG;
-        v._igFsBtnId = btnId;
+        v._igFsBtnEl = btn;
 
         btn.addEventListener('click', (e) => {
             e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
@@ -199,8 +193,12 @@
         if (!isHomeFeed()) return;
         const r = v.getBoundingClientRect();
         if (r.width < 100 || r.height < 100) return;
-        if (videoHasFSBtn(v)) return;
+        // T0 button already here (connected, not a T1 button) → nothing to do
+        const existing = v._igFsBtnEl;
+        if (existing?.isConnected && !existing.classList.contains('ig-fs-btn-t1')) return;
         if (v._igFsT0Setting) return;
+        // Remove T1 button left behind from a modal that just closed
+        existing?.remove(); v._igFsBtnEl = null;
         v._igFsT0Setting = true;
 
         const done = () => { v._igFsT0Setting = false; };
@@ -251,8 +249,12 @@
     }
 
     function setupType1Video(v) {
-        if (videoHasFSBtn(v)) return;
+        // T1 button already here (connected, has ig-fs-btn-t1 class) → nothing to do
+        const existing = v._igFsBtnEl;
+        if (existing?.isConnected && existing.classList.contains('ig-fs-btn-t1')) return;
         if (v._igFsT1Setting) return;
+        // Remove T0 feed button — same <video> is now entering modal context
+        existing?.remove(); v._igFsBtnEl = null;
         v._igFsT1Setting = true;
 
         const done = () => { v._igFsT1Setting = false; };
