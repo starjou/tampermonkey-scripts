@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.16
+// @version      1.17
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -18,13 +18,6 @@
         style.textContent = `
             video:-webkit-full-screen { object-fit: contain !important; background: #000; }
             video:fullscreen           { object-fit: contain !important; background: #000; }
-            .ig-fs-btn-wrap {
-                position: absolute;
-                z-index: 9999;
-                bottom: 12px;
-                right: 12px;
-                pointer-events: auto;
-            }
             .ig-fs-btn {
                 width: 28px; height: 28px;
                 display: flex; align-items: center; justify-content: center;
@@ -151,31 +144,27 @@
         if (document.getElementById(btnId)) return;
         if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
 
-        const wrap = document.createElement('div');
-        wrap.className = 'ig-fs-btn-wrap';
-        wrap.id = btnId;
-        v._igFsBtnId = btnId;
-
         const btn = document.createElement('button');
         btn.className = extraBtnClass ? 'ig-fs-btn ' + extraBtnClass : 'ig-fs-btn';
+        btn.id = btnId;
         btn.type = 'button';
         btn.title = 'Fullscreen';
         btn.innerHTML = FS_SVG;
+        v._igFsBtnId = btnId;
 
         btn.addEventListener('click', (e) => {
             e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
             setTimeout(() => onFSClick(), 0);
         });
 
-        wrap.appendChild(btn);
-
-        // Insert as DOM sibling before the mute button's outer container so the FS
-        // button shares the same stacking context as the controls overlay — avoids
-        // the visibility issue caused by IG putting <video> and controls in separate branches.
-        const muteBtnOuter = muteBtn?.parentElement;
-        if (muteBtnOuter?.parentElement) {
-            wrap.style.position = 'static';
-            muteBtnOuter.parentElement.insertBefore(wrap, muteBtnOuter);
+        // Insert directly before the mute button inside its parent div,
+        // then make that parent flex so the two buttons sit side-by-side.
+        if (muteBtn?.parentElement) {
+            const p = muteBtn.parentElement;
+            p.style.display = 'flex';
+            p.style.alignItems = 'center';
+            p.style.gap = '4px';
+            p.insertBefore(btn, muteBtn);
             return;
         }
 
@@ -184,7 +173,8 @@
         if (!videoParent) return;
         if (window.getComputedStyle(videoParent).position === 'static')
             videoParent.style.position = 'relative';
-        videoParent.appendChild(wrap);
+        btn.style.cssText = 'position:absolute;bottom:12px;right:48px;z-index:9999;';
+        videoParent.appendChild(btn);
     }
 
     // ════════════════════════════════════════════════════════
