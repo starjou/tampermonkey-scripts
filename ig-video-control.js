@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.14
+// @version      1.15
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -162,15 +162,28 @@
 
     function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick, extraBtnClass) {
         if (document.getElementById(btnId)) return;
+        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
 
         const videoParent = v.parentElement;
         if (!videoParent) return;
-        if (window.getComputedStyle(videoParent).position === 'static')
-            videoParent.style.position = 'relative';
+
+        // IG puts <video> and its controls overlay in separate DOM branches.
+        // Walk up from videoParent to find the common ancestor that contains muteBtn,
+        // so our button is in the same stacking context as the controls overlay.
+        let container = videoParent;
+        if (muteBtn) {
+            for (let anc = videoParent.parentElement; anc; anc = anc.parentElement) {
+                if (anc.contains(muteBtn)) { container = anc; break; }
+            }
+        }
+
+        if (window.getComputedStyle(container).position === 'static')
+            container.style.position = 'relative';
 
         const wrap = document.createElement('div');
         wrap.className = 'ig-fs-btn-wrap';
         wrap.id = btnId;
+        v._igFsBtnId = btnId;
 
         const btn = document.createElement('button');
         btn.className = extraBtnClass ? 'ig-fs-btn ' + extraBtnClass : 'ig-fs-btn';
@@ -184,8 +197,8 @@
         });
 
         wrap.appendChild(btn);
-        videoParent.appendChild(wrap);
-        if (muteBtn) positionFSBtnNextTo(wrap, muteBtn, videoParent);
+        container.appendChild(wrap);
+        if (muteBtn) positionFSBtnNextTo(wrap, muteBtn, container);
     }
 
     // ════════════════════════════════════════════════════════
@@ -199,7 +212,7 @@
     }
 
     function setupType1Video(v) {
-        if (v.parentElement?.querySelector('.ig-fs-btn-wrap')) return;
+        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
         if (v._igFsT1Setting) return;
         v._igFsT1Setting = true;
 
@@ -227,7 +240,7 @@
         setTimeout(() => {
             mo.disconnect();
             done();
-            if (!v.parentElement?.querySelector('.ig-fs-btn-wrap')) {
+            if (!(v._igFsBtnId && document.getElementById(v._igFsBtnId))) {
                 const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
                 attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), btn, t1Click, 'ig-fs-btn-t1');
             }
@@ -298,7 +311,7 @@
 
     function setupType2Video(v) {
         if (!isType2()) return;
-        if (v.parentElement?.querySelector('.ig-fs-btn-wrap')) return;
+        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
         if (v._igFsT2Setting) return;
         v._igFsT2Setting = true;
 
@@ -328,7 +341,7 @@
         setTimeout(() => {
             mo.disconnect();
             done();
-            if (!v.parentElement?.querySelector('.ig-fs-btn-wrap'))
+            if (!(v._igFsBtnId && document.getElementById(v._igFsBtnId)))
                 attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), null, t2Click);
         }, 2000);
     }
