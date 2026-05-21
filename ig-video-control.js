@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.21
+// @version      1.23
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -134,6 +134,12 @@
         if (btn && isMuted(btn.closest('[role]') || btn.parentElement)) btn.click();
     }
 
+    function videoHasFSBtn(v) {
+        const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
+        if (muteBtn?.parentElement?.querySelector('.ig-fs-btn')) return true;
+        return !!(v._igFsBtnId && document.getElementById(v._igFsBtnId));
+    }
+
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
     const FS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
         viewBox="0 0 24 24" fill="white">
@@ -142,7 +148,7 @@
 
     function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick, extraBtnClass) {
         if (document.getElementById(btnId)) return;
-        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
+        if (videoHasFSBtn(v)) return;
 
         const btn = document.createElement('button');
         btn.className = extraBtnClass ? 'ig-fs-btn ' + extraBtnClass : 'ig-fs-btn';
@@ -189,7 +195,7 @@
         if (!isHomeFeed()) return;
         const r = v.getBoundingClientRect();
         if (r.width < 100 || r.height < 100) return;
-        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
+        if (videoHasFSBtn(v)) return;
         if (v._igFsT0Setting) return;
         v._igFsT0Setting = true;
 
@@ -217,7 +223,7 @@
         setTimeout(() => {
             mo.disconnect();
             done();
-            if (!(v._igFsBtnId && document.getElementById(v._igFsBtnId))) {
+            if (!videoHasFSBtn(v)) {
                 const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
                 attachFSBtnToVideo(v, 'IGFsBtnT0_' + Date.now(), btn, t0Click);
             }
@@ -241,7 +247,7 @@
     }
 
     function setupType1Video(v) {
-        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
+        if (videoHasFSBtn(v)) return;
         if (v._igFsT1Setting) return;
         v._igFsT1Setting = true;
 
@@ -269,7 +275,7 @@
         setTimeout(() => {
             mo.disconnect();
             done();
-            if (!(v._igFsBtnId && document.getElementById(v._igFsBtnId))) {
+            if (!videoHasFSBtn(v)) {
                 const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
                 attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), btn, t1Click, 'ig-fs-btn-t1');
             }
@@ -294,6 +300,12 @@
                 document.querySelectorAll('video').forEach(v => {
                     if (isType1Video(v)) setupType1Video(v);
                 });
+            }, delay));
+        } else if (location.pathname === '/') {
+            // Returning to home feed (e.g. closing a /reel/ modal) — IntersectionObserver
+            // won't re-fire because the video never left the viewport, so force a rescan.
+            [300, 800].forEach(delay => setTimeout(() => {
+                document.querySelectorAll('video').forEach(v => setupType0Video(v));
             }, delay));
         }
     }
@@ -346,7 +358,7 @@
 
     function setupType2Video(v) {
         if (!isType2()) return;
-        if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
+        if (videoHasFSBtn(v)) return;
         if (v._igFsT2Setting) return;
         v._igFsT2Setting = true;
 
@@ -376,7 +388,7 @@
         setTimeout(() => {
             mo.disconnect();
             done();
-            if (!(v._igFsBtnId && document.getElementById(v._igFsBtnId)))
+            if (!videoHasFSBtn(v))
                 attachFSBtnToVideo(v, 'IGFsBtnT2_' + Date.now(), null, t2Click);
         }, 2000);
     }
