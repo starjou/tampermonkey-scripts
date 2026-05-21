@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.27
+// @version      1.28
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -187,6 +187,7 @@
         // then make that parent flex so the two buttons sit side-by-side.
         if (muteBtn?.parentElement) {
             const p = muteBtn.parentElement;
+            if (p.querySelector('.ig-fs-btn')) return; // already present (videoHasFSBtn may have missed it)
             p.style.display = 'flex';
             p.style.flexDirection = 'row';
             p.style.alignItems = 'center';
@@ -199,6 +200,7 @@
         // Fallback (no muteBtn): absolute-position in videoParent
         const videoParent = v.parentElement;
         if (!videoParent) return;
+        if (videoParent.querySelector(':scope > .ig-fs-btn')) return;
         if (window.getComputedStyle(videoParent).position === 'static')
             videoParent.style.position = 'relative';
         btn.style.cssText = 'position:absolute;bottom:12px;right:48px;z-index:9999;';
@@ -359,10 +361,13 @@
 
     // ── Polling 補底：兜住所有漏網的情況 ──────────────────────
     setInterval(() => {
-        if (!location.href.includes('/p/') && !location.href.includes('/reel/')) return;
-        document.querySelectorAll('video').forEach(v => {
-            if (isType1Video(v)) setupType1Video(v);
-        });
+        if (location.href.includes('/p/') || location.href.includes('/reel/')) {
+            document.querySelectorAll('video').forEach(v => {
+                if (isType1Video(v)) setupType1Video(v);
+            });
+        } else if (isHomeFeed()) {
+            document.querySelectorAll('video').forEach(v => setupType0Video(v));
+        }
     }, 1500);
 
     // ════════════════════════════════════════════════════════
