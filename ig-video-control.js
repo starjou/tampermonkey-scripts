@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.24
+// @version      1.25
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -135,9 +135,13 @@
     }
 
     function videoHasFSBtn(v) {
+        // Primary: button was inserted before muteBtn inside its parent
         const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
         if (muteBtn?.parentElement?.querySelector('.ig-fs-btn')) return true;
-        return !!(v._igFsBtnId && document.getElementById(v._igFsBtnId));
+        // Fallback: button was absolute-positioned as a direct child of videoParent.
+        // Use :scope > to avoid matching buttons from other DOM contexts (e.g. a
+        // feed button still in the DOM when the same <video> moves into a modal).
+        return !!(v.parentElement?.querySelector(':scope > .ig-fs-btn'));
     }
 
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
