@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.15
+// @version      1.16
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -141,19 +141,6 @@
         if (btn && isMuted(btn.closest('[role]') || btn.parentElement)) btn.click();
     }
 
-    function positionFSBtnNextTo(wrap, muteBtn, videoParent) {
-        // Use the SVG icon inside muteBtn for accurate position — the container div
-        // may include a volume slider and be much wider than the visible icon
-        const ref = muteBtn.querySelector('svg') || muteBtn;
-        const mr = ref.getBoundingClientRect();
-        const pr = videoParent.getBoundingClientRect();
-        // If the element hasn't been laid out yet, keep default CSS position
-        if (!mr.width && !mr.height) return;
-        wrap.style.left = 'auto';
-        wrap.style.right = Math.max(8, pr.right - mr.left + 8) + 'px';
-        wrap.style.bottom = Math.max(8, pr.bottom - mr.bottom) + 'px';
-    }
-
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
     const FS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
         viewBox="0 0 24 24" fill="white">
@@ -163,22 +150,6 @@
     function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick, extraBtnClass) {
         if (document.getElementById(btnId)) return;
         if (v._igFsBtnId && document.getElementById(v._igFsBtnId)) return;
-
-        const videoParent = v.parentElement;
-        if (!videoParent) return;
-
-        // IG puts <video> and its controls overlay in separate DOM branches.
-        // Walk up from videoParent to find the common ancestor that contains muteBtn,
-        // so our button is in the same stacking context as the controls overlay.
-        let container = videoParent;
-        if (muteBtn) {
-            for (let anc = videoParent.parentElement; anc; anc = anc.parentElement) {
-                if (anc.contains(muteBtn)) { container = anc; break; }
-            }
-        }
-
-        if (window.getComputedStyle(container).position === 'static')
-            container.style.position = 'relative';
 
         const wrap = document.createElement('div');
         wrap.className = 'ig-fs-btn-wrap';
@@ -197,8 +168,23 @@
         });
 
         wrap.appendChild(btn);
-        container.appendChild(wrap);
-        if (muteBtn) positionFSBtnNextTo(wrap, muteBtn, container);
+
+        // Insert as DOM sibling before the mute button's outer container so the FS
+        // button shares the same stacking context as the controls overlay — avoids
+        // the visibility issue caused by IG putting <video> and controls in separate branches.
+        const muteBtnOuter = muteBtn?.parentElement;
+        if (muteBtnOuter?.parentElement) {
+            wrap.style.position = 'static';
+            muteBtnOuter.parentElement.insertBefore(wrap, muteBtnOuter);
+            return;
+        }
+
+        // Fallback (no muteBtn): absolute-position in videoParent
+        const videoParent = v.parentElement;
+        if (!videoParent) return;
+        if (window.getComputedStyle(videoParent).position === 'static')
+            videoParent.style.position = 'relative';
+        videoParent.appendChild(wrap);
     }
 
     // ════════════════════════════════════════════════════════
