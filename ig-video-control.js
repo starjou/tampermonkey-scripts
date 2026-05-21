@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.23
+// @version      1.24
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -302,15 +302,19 @@
                 });
             }, delay));
         } else if (location.pathname === '/') {
-            // Returning to home feed (e.g. closing a /reel/ modal) — IntersectionObserver
-            // won't re-fire because the video never left the viewport, so force a rescan.
-            [300, 800].forEach(delay => setTimeout(() => {
+            // Returning to home feed — IntersectionObserver won't re-fire because the
+            // video never left the viewport, so force a rescan at multiple delays to
+            // ensure the modal is fully torn down before we re-attach the button.
+            [300, 800, 1500, 3000].forEach(delay => setTimeout(() => {
                 document.querySelectorAll('video').forEach(v => setupType0Video(v));
             }, delay));
         }
     }
     const _origPushState = history.pushState.bind(history);
     history.pushState = function (...args) { _origPushState(...args); t1OnUrlChange(); };
+    // Also hook replaceState — IG uses it when closing a /reel/ modal back to /
+    const _origReplaceState = history.replaceState.bind(history);
+    history.replaceState = function (...args) { _origReplaceState(...args); t1OnUrlChange(); };
     window.addEventListener('popstate', t1OnUrlChange);
 
     // ── MutationObserver：監控新 video 加入 DOM ──────────────
