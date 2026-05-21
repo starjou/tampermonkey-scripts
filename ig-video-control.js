@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.13
+// @version      1.14
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -84,6 +84,7 @@
     // IG 有時用中文 aria-label，有時英文，全抓
     const MUTE_BTN_SELECTORS = [
         'button[aria-label="切換音效"]',
+        'button[aria-label="Toggle audio"]',
         'button[aria-label="Mute"]',
         'button[aria-label="Unmute"]',
         'button[aria-label="Audio"]',
@@ -91,6 +92,7 @@
     const MUTED_SVG_SELECTORS = [
         'svg[aria-label="已靜音"]',
         'svg[aria-label="Muted"]',
+        'svg[aria-label="Audio is muted"]',
     ];
     const PLAYING_SVG_SELECTORS = [
         'svg[aria-label="正在播放音效"]',
@@ -145,6 +147,8 @@
         const ref = muteBtn.querySelector('svg') || muteBtn;
         const mr = ref.getBoundingClientRect();
         const pr = videoParent.getBoundingClientRect();
+        // If the element hasn't been laid out yet, keep default CSS position
+        if (!mr.width && !mr.height) return;
         wrap.style.left = 'auto';
         wrap.style.right = Math.max(8, pr.right - mr.left + 8) + 'px';
         wrap.style.bottom = Math.max(8, pr.bottom - mr.bottom) + 'px';
@@ -208,9 +212,7 @@
         const trySetup = (muteBtn) => {
             done();
             clickUnmute(v);
-            // Don't pass muteBtn for positioning on Type 1 — default CSS (bottom:12px right:12px)
-            // is more reliable across IG A/B variants than positionFSBtnNextTo
-            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click, 'ig-fs-btn-t1');
+            attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), muteBtn, t1Click, 'ig-fs-btn-t1');
         };
 
         const muteBtn = findMuteBtn(v) || findMuteBtnBySvg(v);
@@ -225,8 +227,10 @@
         setTimeout(() => {
             mo.disconnect();
             done();
-            if (!v.parentElement?.querySelector('.ig-fs-btn-wrap'))
-                attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), null, t1Click, 'ig-fs-btn-t1');
+            if (!v.parentElement?.querySelector('.ig-fs-btn-wrap')) {
+                const btn = findMuteBtn(v) || findMuteBtnBySvg(v);
+                attachFSBtnToVideo(v, 'IGFsBtnT1_' + Date.now(), btn, t1Click, 'ig-fs-btn-t1');
+            }
         }, 2000);
     }
 
