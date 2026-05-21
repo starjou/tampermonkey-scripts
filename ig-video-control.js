@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.18
+// @version      1.19
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -22,7 +22,6 @@
                 width: 28px; height: 28px;
                 display: flex; align-items: center; justify-content: center;
                 background: rgba(43,48,54,0.5);
-                margin-right: -10px;
                 border: none; border-radius: 50%;
                 cursor: pointer; padding: 0;
                 transition: background 0.15s;
@@ -166,6 +165,7 @@
             p.style.flexDirection = 'row';
             p.style.alignItems = 'center';
             p.style.gap = '4px';
+            if (!location.href.includes('/reels/')) btn.style.marginRight = '-10px';
             p.insertBefore(btn, muteBtn);
             return;
         }
