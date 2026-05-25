@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Facebook 防自動重整
 // @namespace    https://www.jk-web.com/
-// @version      1.1
-// @description  防止 Facebook 切換分頁後自動重新整理
+// @version      1.2
+// @description  防止 Facebook 切換分頁或關閉全屏 Reel 後自動重新整理
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
 // @run-at       document-start
@@ -26,4 +26,11 @@
     document.addEventListener('visibilitychange', e => e.stopImmediatePropagation(), true);
     window.addEventListener('focus', e => e.stopImmediatePropagation(), true);
     window.addEventListener('blur', e => e.stopImmediatePropagation(), true);
+
+    // 阻止程式化的 location.reload()，防止 Reel 全屏關閉後觸發重整
+    Object.defineProperty(Location.prototype, 'reload', {
+        value: function () {},
+        configurable: true,
+        writable: true,
+    });
 })();
