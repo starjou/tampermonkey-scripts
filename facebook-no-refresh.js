@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Facebook 防自動重整
 // @namespace    https://www.jk-web.com/
-// @version      1.6
+// @version      1.7
 // @description  防止 Facebook 切換分頁或關閉全屏 Reel 後自動重新整理
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
@@ -14,73 +14,72 @@
 (function () {
     'use strict';
 
-    // ── 追蹤「上一個 URL」，用於判斷是否從 Reel 返回 ────────────────────────
+    // ── 優先儲存所有 native 函式（在任何 override 之前）────────────────────
+    const _push    = History.prototype.pushState;
+    const _replace = History.prototype.replaceState;
+    const _back    = History.prototype.back;
+    const _go      = History.prototype.go;
+
+    // ── 追蹤上一個 URL ───────────────────────────────────────────────────────
     let prevUrl = location.href;
 
-    const _origPush = History.prototype.pushState;
     History.prototype.pushState = function (state, title, url) {
-        const result = _origPush.call(this, state, title, url);
-        prevUrl = location.href; // pushState 後 location.href 已同步更新
-        return result;
-    };
-
-    const _origReplace = History.prototype.replaceState;
-    History.prototype.replaceState = function (state, title, url) {
-        const result = _origReplace.call(this, state, title, url);
+        const result = _push.call(this, state, title, url);
         prevUrl = location.href;
         return result;
     };
 
-    // ── 核心修復：在 EventTarget.prototype.addEventListener 層包住所有 popstate ─
-    //
-    // 問題根因：Facebook 可能透過 inline script 在我們腳本之前就註冊了 capture
-    // phase 的 popstate listener；stopImmediatePropagation() 無法阻止已先執行的
-    // handler 排出 async 任務（MessageChannel/React scheduler）。
-    //
-    // 解法：在 EventTarget 層攔截所有 popstate 的 addEventListener 呼叫，
-    // 把每個 handler 包一層 blockNextPopstate 判斷，不管誰先誰後都受控制。
-
-    let blockNextPopstate = false;
-
-    const _origAEL = EventTarget.prototype.addEventListener;
-    EventTarget.prototype.addEventListener = function (type, handler, options) {
-        if (type === 'popstate' && this === window && typeof handler === 'function') {
-            const wrapped = function (e) {
-                if (blockNextPopstate) return;
-                return handler.call(this, e);
-            };
-            return _origAEL.call(this, type, wrapped, options);
-        }
-        return _origAEL.call(this, type, handler, options);
+    History.prototype.replaceState = function (state, title, url) {
+        const result = _replace.call(this, state, title, url);
+        prevUrl = location.href;
+        return result;
     };
 
-    // 同樣包住 window.onpopstate 屬性設定
-    let _rawOnPopstate = null;
-    Object.defineProperty(window, 'onpopstate', {
-        get: () => _rawOnPopstate,
-        set(fn) {
-            _rawOnPopstate = typeof fn === 'function'
-                ? function (e) { if (!blockNextPopstate) fn.call(this, e); }
-                : fn;
-        },
-        configurable: true,
-    });
+    // ── 策略 A：攔截程式化的 history.back() / go(-1) ─────────────────────────
+    //
+    // 根因分析：Facebook 在 Reel modal 關閉時呼叫 history.back()，
+    // 這會觸發 popstate，Facebook router 收到後呼叫 buildRootComponent() 重建頁面。
+    //
+    // 解法：把 history.back() 在 Reel 頁面替換為 native replaceState('/')，
+    // URL 靜默更新但 popstate 完全不觸發，router 感知不到這次導航。
+    // （replaceState 本身不會觸發 buildRootComponent，已由 debug log 確認。）
 
-    // 我們自己的 popstate 監聽器，用 _origAEL 直接註冊（不受上面的包裝影響），
-    // capture phase 確保在所有 wrapped handler 之前執行
-    _origAEL.call(window, 'popstate', function (e) {
+    History.prototype.back = function () {
+        if (/\/reel\//.test(location.href)) {
+            _replace.call(this, history.state, '', location.origin + '/');
+            prevUrl = location.href;
+            console.warn('[fb-no-refresh] intercepted history.back() on Reel → silent replaceState');
+            return;
+        }
+        return _back.call(this);
+    };
+
+    History.prototype.go = function (delta) {
+        if (typeof delta === 'number' && delta < 0 && /\/reel\//.test(location.href)) {
+            _replace.call(this, history.state, '', location.origin + '/');
+            prevUrl = location.href;
+            console.warn('[fb-no-refresh] intercepted history.go(' + delta + ') on Reel → silent replaceState');
+            return;
+        }
+        return _go.call(this, delta);
+    };
+
+    // ── 策略 B：瀏覽器返回鍵的 popstate 攔截（備援）──────────────────────────
+    // 使用者按瀏覽器返回鍵時無法攔截 history.back()，改在 capture phase 擋住
+    window.addEventListener('popstate', (e) => {
         const from = prevUrl;
-        prevUrl = location.href; // 更新為新 URL
+        prevUrl = location.href;
 
-        if (/\/reel\//.test(from)) {
-            blockNextPopstate = true;
-            // 在本次 event loop 結束後重置，確保所有同步 handler 都被攔截
-            setTimeout(function () { blockNextPopstate = false; }, 0);
-            console.warn('[fb-no-refresh] blocked popstate from Reel:', from, '→', location.href);
+        const fromReel = /\/reel\//.test(from);
+        const toFeed   = /^https:\/\/www\.facebook\.com\/?(\?.*)?$/.test(location.href);
+
+        if (fromReel && toFeed) {
+            e.stopImmediatePropagation();
+            console.warn('[fb-no-refresh] blocked popstate Reel → feed');
         }
     }, true);
 
-    // ── 阻止程式化的 location.reload() ──────────────────────────────────────
+    // ── 阻止 location.reload() ──────────────────────────────────────────────
     Object.defineProperty(Location.prototype, 'reload', {
         value: function () {},
         configurable: true,
