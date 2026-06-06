@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.29
+// @version      1.30
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -160,10 +160,7 @@
     function videoHasFSBtn(v) {
         const muteBtn = findMuteBtnInContext(v);
         if (!muteBtn) return false;
-        // If mute button is inside a volume slider widget, our button sits before
-        // the slider (not inside it), so check the slider's parent.
-        const slider = muteBtn.closest('[role="slider"]');
-        return !!((slider ?? muteBtn).parentElement?.querySelector('.ig-fs-btn'));
+        return !!muteBtn.parentElement?.querySelector('.ig-fs-btn');
     }
 
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
@@ -188,19 +185,16 @@
             setTimeout(() => onFSClick(), 0);
         });
 
-        // Insert before the mute button (or the whole volume-slider widget that
-        // contains it) so the button sits outside, not buried inside, the slider.
+        // Insert directly before the mute button inside its parent container.
         if (muteBtn?.parentElement) {
-            const slider = muteBtn.closest('[role="slider"]');
-            const ref = slider ?? muteBtn;
-            const p = ref.parentElement;
+            const p = muteBtn.parentElement;
             if (p.querySelector('.ig-fs-btn')) return;
             p.style.display = 'flex';
             p.style.flexDirection = 'row';
             p.style.alignItems = 'center';
             p.style.gap = '4px';
             if (!location.href.includes('/reels/')) btn.style.marginRight = '-10px';
-            p.insertBefore(btn, ref);
+            p.insertBefore(btn, muteBtn);
             return;
         }
 
