@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.31
+// @version      1.32
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -202,12 +202,23 @@
             // Old IG structure: standalone mute button, insert before it in its parent.
             const p = muteBtn.parentElement;
             if (p.querySelector('.ig-fs-btn')) return;
-            p.style.display = 'flex';
-            p.style.flexDirection = 'row';
-            p.style.alignItems = 'center';
-            p.style.gap = '4px';
-            if (!location.href.includes('/reels/')) btn.style.marginRight = '-10px';
-            p.insertBefore(btn, muteBtn);
+            if (window.getComputedStyle(muteBtn).position === 'absolute') {
+                // Mute button is absolutely positioned — match that and sit left of it.
+                if (window.getComputedStyle(p).position === 'static') p.style.position = 'relative';
+                const mr = muteBtn.getBoundingClientRect();
+                const pr = p.getBoundingClientRect();
+                const right = pr.right - mr.left + 4;
+                const bottom = pr.bottom - mr.bottom;
+                btn.style.cssText = `position:absolute;bottom:${bottom}px;right:${right}px;z-index:9999;visibility:visible;`;
+                p.appendChild(btn);
+            } else {
+                p.style.display = 'flex';
+                p.style.flexDirection = 'row';
+                p.style.alignItems = 'center';
+                p.style.gap = '4px';
+                if (!location.href.includes('/reels/')) btn.style.marginRight = '-10px';
+                p.insertBefore(btn, muteBtn);
+            }
             return;
         }
 
