@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.43
+// @version      1.44
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -21,7 +21,7 @@
             .ig-fs-btn {
                 width: 28px; height: 28px;
                 display: flex; align-items: center; justify-content: center;
-                background: transparent;
+                background: rgba(43, 48, 54, 0.8);
                 border: none; border-radius: 50%;
                 cursor: pointer; padding: 0;
                 color: rgb(245, 245, 245);
