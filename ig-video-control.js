@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.33
+// @version      1.34
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -212,8 +212,8 @@
                 // even when muteBtn uses negative offsets (e.g. right:-52).
                 const muteBtnRight = parseFloat(ms.right) || 0;
                 const muteBtnTop  = parseFloat(ms.top)   || 0;
-                const right  = muteBtnRight + muteBtn.offsetWidth + 4;
-                const top    = muteBtnTop;
+                const right  = muteBtnRight + muteBtn.offsetWidth + 8;
+                const top    = muteBtnTop - 4;
                 btn.style.cssText = `position:absolute;top:${top}px;right:${right}px;z-index:9999;visibility:visible;`;
                 cb.appendChild(btn);
             } else {
