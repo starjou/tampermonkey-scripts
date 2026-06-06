@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.28
+// @version      1.29
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -94,10 +94,11 @@
 
     function findMuteBtn(root) {
         for (let i = 0; i < 15; i++) {
-            // New IG structure: div[role="button"] wraps the volume slider
             const slider = root?.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
             if (slider) {
-                const btn = slider.closest('[role="button"]');
+                // Old: slider is wrapped by a [role="button"]
+                // New: slider IS the widget; mute toggle is a [role="button"] inside it
+                const btn = slider.closest('[role="button"]') || slider.querySelector('[role="button"]');
                 if (btn) return btn;
             }
             // Old structure: button with aria-label
@@ -143,7 +144,7 @@
             if (!root) break;
             if (root.querySelectorAll('video').length > 1) break;
             const slider = root.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
-            if (slider) { const b = slider.closest('[role="button"]'); if (b) return b; }
+            if (slider) { const b = slider.closest('[role="button"]') || slider.querySelector('[role="button"]'); if (b) return b; }
             for (const sel of MUTE_BTN_SELECTORS) {
                 const b = root.querySelector(sel); if (b) return b;
             }
@@ -158,7 +159,11 @@
 
     function videoHasFSBtn(v) {
         const muteBtn = findMuteBtnInContext(v);
-        return !!muteBtn?.parentElement?.querySelector('.ig-fs-btn');
+        if (!muteBtn) return false;
+        // If mute button is inside a volume slider widget, our button sits before
+        // the slider (not inside it), so check the slider's parent.
+        const slider = muteBtn.closest('[role="slider"]');
+        return !!((slider ?? muteBtn).parentElement?.querySelector('.ig-fs-btn'));
     }
 
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
@@ -183,17 +188,19 @@
             setTimeout(() => onFSClick(), 0);
         });
 
-        // Insert directly before the mute button inside its parent div,
-        // then make that parent flex so the two buttons sit side-by-side.
+        // Insert before the mute button (or the whole volume-slider widget that
+        // contains it) so the button sits outside, not buried inside, the slider.
         if (muteBtn?.parentElement) {
-            const p = muteBtn.parentElement;
-            if (p.querySelector('.ig-fs-btn')) return; // already present (videoHasFSBtn may have missed it)
+            const slider = muteBtn.closest('[role="slider"]');
+            const ref = slider ?? muteBtn;
+            const p = ref.parentElement;
+            if (p.querySelector('.ig-fs-btn')) return;
             p.style.display = 'flex';
             p.style.flexDirection = 'row';
             p.style.alignItems = 'center';
             p.style.gap = '4px';
             if (!location.href.includes('/reels/')) btn.style.marginRight = '-10px';
-            p.insertBefore(btn, muteBtn);
+            p.insertBefore(btn, ref);
             return;
         }
 
