@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.32
+// @version      1.33
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -203,14 +203,19 @@
             const p = muteBtn.parentElement;
             if (p.querySelector('.ig-fs-btn')) return;
             if (window.getComputedStyle(muteBtn).position === 'absolute') {
-                // Mute button is absolutely positioned — match that and sit left of it.
-                if (window.getComputedStyle(p).position === 'static') p.style.position = 'relative';
-                const mr = muteBtn.getBoundingClientRect();
-                const pr = p.getBoundingClientRect();
-                const right = pr.right - mr.left + 4;
-                const bottom = pr.bottom - mr.bottom;
-                btn.style.cssText = `position:absolute;bottom:${bottom}px;right:${right}px;z-index:9999;visibility:visible;`;
-                p.appendChild(btn);
+                // Mute button is absolutely positioned — use its actual containing block
+                // (offsetParent) as the reference so coords are always correct regardless
+                // of transforms or nested positioned ancestors.
+                const cb = muteBtn.offsetParent || p;
+                const ms = window.getComputedStyle(muteBtn);
+                // Mirror muteBtn's own right/top values so we stay in the same coord space
+                // even when muteBtn uses negative offsets (e.g. right:-52).
+                const muteBtnRight = parseFloat(ms.right) || 0;
+                const muteBtnTop  = parseFloat(ms.top)   || 0;
+                const right  = muteBtnRight + muteBtn.offsetWidth + 4;
+                const top    = muteBtnTop;
+                btn.style.cssText = `position:absolute;top:${top}px;right:${right}px;z-index:9999;visibility:visible;`;
+                cb.appendChild(btn);
             } else {
                 p.style.display = 'flex';
                 p.style.flexDirection = 'row';
