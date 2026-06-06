@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.35
+// @version      1.36
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -194,12 +194,14 @@
                 // sits adjacent to the widget without injecting flex into any container.
                 const p = slider.parentElement;
                 if (p.querySelector('.ig-fs-btn')) return;
-                const cb = muteBtn.offsetParent || p;
-                const ms = window.getComputedStyle(muteBtn);
-                const right = parseFloat(ms.right) + muteBtn.offsetWidth + 8;
-                const top   = parseFloat(ms.top) - 4;
+                if (window.getComputedStyle(p).position === 'static') p.style.position = 'relative';
+                // Compute muteBtn's offset relative to p so coords stay in p's coordinate space.
+                const mr = muteBtn.getBoundingClientRect();
+                const pr = p.getBoundingClientRect();
+                const right = pr.right - mr.left + 8;
+                const top   = mr.top - pr.top - 4;
                 btn.style.cssText = `position:absolute;top:${top}px;right:${right}px;z-index:9999;visibility:visible;`;
-                cb.appendChild(btn);
+                p.appendChild(btn);
                 return;
             }
             // Old IG structure: standalone mute button, insert before it in its parent.
