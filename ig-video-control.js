@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.37
+// @version      1.38
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -198,9 +198,9 @@
                 // Compute muteBtn's offset relative to p so coords stay in p's coordinate space.
                 const mr = muteBtn.getBoundingClientRect();
                 const pr = p.getBoundingClientRect();
-                const right = pr.right - mr.left + 8;
-                const top   = mr.top - pr.top + 1;
-                btn.style.cssText = `position:absolute;top:${top}px;right:${right}px;z-index:9999;visibility:visible;`;
+                const right  = pr.right - mr.left + 8;
+                const bottom = pr.bottom - mr.bottom - 1;
+                btn.style.cssText = `position:absolute;bottom:${bottom}px;right:${right}px;z-index:9999;visibility:visible;`;
                 p.appendChild(btn);
                 return;
             }
