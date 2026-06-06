@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.30
+// @version      1.31
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -160,7 +160,8 @@
     function videoHasFSBtn(v) {
         const muteBtn = findMuteBtnInContext(v);
         if (!muteBtn) return false;
-        return !!muteBtn.parentElement?.querySelector('.ig-fs-btn');
+        const slider = muteBtn.closest('[role="slider"]');
+        return !!((slider?.parentElement ?? muteBtn.parentElement)?.querySelector('.ig-fs-btn'));
     }
 
     // ── FSBtn：直接 absolute 定位在 video 上 ──────────────────
@@ -185,8 +186,20 @@
             setTimeout(() => onFSClick(), 0);
         });
 
-        // Insert directly before the mute button inside its parent container.
         if (muteBtn?.parentElement) {
+            const slider = muteBtn.closest('[role="slider"]');
+            if (slider?.parentElement) {
+                // New IG structure: mute toggle is inside a vertical volume slider widget.
+                // Append button to the slider's parent with absolute positioning so it
+                // sits adjacent to the widget without injecting flex into any container.
+                const p = slider.parentElement;
+                if (p.querySelector('.ig-fs-btn')) return;
+                if (window.getComputedStyle(p).position === 'static') p.style.position = 'relative';
+                btn.style.cssText = 'position:absolute;bottom:8px;right:44px;z-index:9999;visibility:visible;';
+                p.appendChild(btn);
+                return;
+            }
+            // Old IG structure: standalone mute button, insert before it in its parent.
             const p = muteBtn.parentElement;
             if (p.querySelector('.ig-fs-btn')) return;
             p.style.display = 'flex';
