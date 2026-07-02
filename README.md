@@ -25,6 +25,12 @@
 - 封鎖 `window.open` 廣告跳轉
 - 攔截網站注入的假 click 事件，防止觸發全螢幕
 
+### MSN 新聞跳轉至原始出處
+**檔案：** `msn-redirect.js`<br>
+**適用：** https://www.msn.com/zh-tw/news/*<br>
+**功能：**
+- MSN 新聞頁面自動跳轉至原始新聞來源網站
+
 ## 安裝方式
 
 ### 手動安裝
@@ -33,6 +39,7 @@
    - [IG Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ig-video-control.js)
    - [Facebook Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/facebook-video-control.js)
    - [Ad Overlay Blocker](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.user.js)
+   - [MSN 新聞跳轉至原始出處](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/msn-redirect.js)
 
 ### 自動更新
 腳本內含 `@updateURL`，Tampermonkey 會定期檢查版本並自動更新。

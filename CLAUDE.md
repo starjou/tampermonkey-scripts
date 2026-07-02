@@ -6,7 +6,7 @@ Tampermonkey userscript，為 Instagram 影片加上全螢幕按鈕並自動取�
 
 - **檔案**：`/home/wsl/tampermonkey-scripts/ig-video-control.js`
 - **GitHub**：`https://github.com/starjou/tampermonkey-scripts`
-- **目前版本**：v1.31
+- **目前版本**：v1.44
 
 ---
 
@@ -24,10 +24,14 @@ div[data-instancekey][style="visibility:hidden"]   ← controls wrapper（hover 
     div[role="slider"][aria-label="調整音量"]        ← volume slider widget（直立式）
       div (inner container)
         div (volume track bar)
-        div[role="button"]                          ← 靜音按鈕（mute toggle）
+        div[role="button"]                          ← 靜音按鈕（mute toggle），position:absolute
 ```
 
-**關鍵**：`div[role="presentation"]` 可能是 `position:absolute` 全版遮擋，導致插在其 sibling 位置的按鈕點不到。`div[role="slider"]` 是直立的 volume slider，內部的子元素可能是 `position:absolute`（這就是為什麼雖然 container 是 flex-row，兩個 div 卻疊在一起）。
+**已確認**：
+- `div[role="button"]`（mute button）本身是 `position:absolute`，`background: transparent`
+- 視覺上的灰黑色圓形背景來自 mute button 的直接父層（`background: rgba(43,48,54,0.8)`）
+- `div[role="button"]` 的 `color` 是 `rgb(245,245,245)`，SVG 用 `currentColor` 繼承
+- mute button 的 `offsetLeft`/`offsetTop` 都是 0（offsetParent 是緊鄰的小容器，不是 slider.parentElement）
 
 ---
 
@@ -64,39 +68,56 @@ function videoHasFSBtn(v) {
 
 ## attachFSBtnToVideo 插入邏輯
 
+### 新結構路徑（slider 內的 mute button）
+
+FS button append 到 `slider.parentElement`（`p`），而非 `offsetParent`。原因：`offsetParent` 在 controls overlay 之外，append 過去後 hover 顯示邏輯不會套用，按鈕會看不見。
+
+座標計算用 **double `requestAnimationFrame`** 延遲執行，避免 modal 開啟動畫期間 layout 未穩定導致位置偏移：
+
 ```javascript
-function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick, extraBtnClass) {
-    if (document.getElementById(btnId)) return;
-    if (videoHasFSBtn(v)) return;
+const p = slider.parentElement;
+if (p.querySelector('.ig-fs-btn')) return;
+if (window.getComputedStyle(p).position === 'static') p.style.position = 'relative';
+p.appendChild(btn);
+requestAnimationFrame(() => requestAnimationFrame(() => {
+    const mr = muteBtn.getBoundingClientRect();
+    const pr = p.getBoundingClientRect();
+    const right  = pr.right - mr.left + 8;   // 8px gap 在 mute button 左邊
+    const bottom = pr.bottom - mr.bottom - 1; // 對齊 mute button 底部
+    btn.style.cssText = `position:absolute;bottom:${bottom}px;right:${right}px;z-index:9999;visibility:visible;`;
+}));
+```
 
-    // 建立 button...
+**為什麼不用 `offsetLeft`/`offsetTop`**：mute button 的 `offsetLeft`/`offsetTop` 都是 0（offsetParent 是緊鄰的小容器），無法用來算相對於 `p` 的座標。
 
-    if (muteBtn?.parentElement) {
-        const slider = muteBtn.closest('[role="slider"]');
-        if (slider?.parentElement) {
-            // 新結構：slider 內的 mute button
-            // v1.31：用 position:absolute 掛在 slider 的 parent，不破壞 slider 內部 layout
-            const p = slider.parentElement;
-            if (p.querySelector('.ig-fs-btn')) return;
-            if (getComputedStyle(p).position === 'static') p.style.position = 'relative';
-            btn.style.cssText = 'position:absolute;bottom:8px;right:44px;z-index:9999;visibility:visible;';
-            p.appendChild(btn);
-            return;
-        }
-        // 舊結構：直接插在 mute button 前面，把 parent 設成 flex
-        const p = muteBtn.parentElement;
-        if (p.querySelector('.ig-fs-btn')) return;
-        p.style.display = 'flex'; p.style.flexDirection = 'row';
-        p.style.alignItems = 'center'; p.style.gap = '4px';
-        if (!location.href.includes('/reels/')) btn.style.marginRight = '-10px';
-        p.insertBefore(btn, muteBtn);
-        return;
-    }
-    // Fallback：absolute in videoParent
+**為什麼不用 computed style `right`/`bottom`**：mute button 的 `position` 值顯示為 `-52`，若直接讀 CSS `right` 值再加上 button 寬度算位置，因為 `p` 很寬（全頁寬），結果會不穩定。
+
+### 舊結構路徑（standalone mute button）
+
+偵測 mute button 的 `position` 是否為 `absolute`：
+- 是：用 `offsetParent` 為基準，讀 computed `right`/`top` 計算座標
+- 否：把 parent 設成 flex，`insertBefore` 插在 mute button 前面
+
+### Fallback
+
+沒找到 mute button 時，absolute 定位在 `videoParent`。
+
+---
+
+## FS Button 樣式
+
+```css
+.ig-fs-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(43, 48, 54, 0.8);  /* 對齊 mute button wrapper 背景 */
+    border: none; border-radius: 50%;
+    cursor: pointer; padding: 0;
+    color: rgb(245, 245, 245);           /* 對齊 mute button computed color */
 }
 ```
 
-**待確認**：v1.31 用 `bottom:8px; right:44px` 作為座標，但尚未確認 slider 內部 children 的 `position` 是否為 `absolute`。如果 inner container 的 children 都是 `position:absolute`，則 flex-row 對它們沒有作用，這就是「flex container 裡面兩個 div 卻疊在一起」的原因。
+SVG icon 用 `fill="currentColor"` 繼承 `color`。
 
 ---
 
@@ -108,7 +129,7 @@ function attachFSBtnToVideo(v, btnId, muteBtn, onFSClick, extraBtnClass) {
 | T1 | `/p/xxxxx` 或 `/reel/xxxxx` (modal) | `setupType1Video` |
 | T2 | `/reels/` (連續 reels 介面) | `setupType2Video` |
 
-T1 button 有額外 class `ig-fs-btn-t1`（深色背景），T0/T2 沒有。
+T1 button 有額外 class `ig-fs-btn-t1`，T0/T2 沒有（v1.44 後樣式已統一，class 差異僅保留向下相容）。
 
 ---
 
@@ -146,11 +167,11 @@ const MUTED_SVG_SELECTORS = ['svg[aria-label="已靜音"]', 'svg[aria-label="Mut
 const PLAYING_SVG_SELECTORS = ['svg[aria-label="正在播放音效"]', 'svg[aria-label="Audio is playing"]'];
 ```
 
-`findMuteBtn` 的 slider 路徑（v1.29 新增）：
+`findMuteBtn` 的 slider 路徑：
 ```javascript
 const slider = root?.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
 if (slider) {
-    const btn = slider.closest('[role="button"]')   // 舊結構：slider 外面有 role=button
+    const btn = slider.closest('[role="button"]')    // 舊結構：slider 外面有 role=button
              || slider.querySelector('[role="button"]'); // 新結構：mute button 在 slider 裡面
     if (btn) return btn;
 }
@@ -160,6 +181,5 @@ if (slider) {
 
 ## 未解決 / 待觀察
 
-1. **v1.31 位置問題**：`bottom:8px; right:44px` 是猜測值，尚未確認是否正確。需要 user 測試後回饋。
-2. **slider inner children `position:absolute`**：待 DevTools 確認。若是，則 v1.30 的插入方式（flex container 裡插 button）確實無法對齊，解法是讓 FS button 也用 `position:absolute` 並定位在 mute button 旁。
-3. **按鈕偶爾消失**：IG React re-render controls 時移除我們的按鈕，靠 polling 補回，但 1.5s 內有空窗。
+1. **按鈕偶爾消失**：IG React re-render controls 時移除我們的按鈕，靠 polling 補回，但 1.5s 內有空窗。
+2. **`ig-fs-btn-t1` class**：v1.44 後背景樣式已統一，這個 class 實際上沒有額外效果，可考慮未來移除。
