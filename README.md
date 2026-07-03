@@ -31,6 +31,14 @@
 **功能：**
 - MSN 新聞頁面自動跳轉至原始新聞來源網站
 
+### TRC20 測試地址產生器
+**檔案：** `trc20-test-address-generator.js`<br>
+**適用：** 所有網站（預設僅 `localhost`，可自訂）<br>
+**功能：**
+- 一鍵生成格式與 checksum 皆合法的 TRC20 測試地址（純隨機，不對應任何真實私鑰），用於前端表單測試
+- 自動填入目前焦點欄位並複製到剪貼簿
+- 透過 Tampermonkey 選單自訂啟用的網址清單（比對網址是否包含關鍵字，輸入 `*` 可全站啟用）
+
 ## 安裝方式
 
 ### 手動安裝
@@ -40,6 +48,7 @@
    - [Facebook Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/facebook-video-control.js)
    - [Ad Overlay Blocker](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.user.js)
    - [MSN 新聞跳轉至原始出處](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/msn-redirect.js)
+   - [TRC20 測試地址產生器](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/trc20-test-address-generator.js)
 
 ### 自動更新
 腳本內含 `@updateURL`，Tampermonkey 會定期檢查版本並自動更新。
