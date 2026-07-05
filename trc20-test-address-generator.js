@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TRC20 測試地址產生器
 // @namespace    jk-studio-dev-tools
-// @version      1.2
+// @version      1.3
 // @description  一鍵生成格式與 checksum 皆合法的 TRC20 測試地址（純隨機，不對應任何真實私鑰），用於前端表單測試。啟用網址可自訂（Tampermonkey 選單）。
 // @author       Jacky
 // @match        *://*/*
@@ -131,25 +131,32 @@
     style.textContent = `
       #trc20-gen-btn {
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        top: 50%;
+        right: 0;
         z-index: 999999;
         background: #1a1a2e;
         color: #fff;
         border: 1px solid #444;
-        border-radius: 24px;
+        border-right: none;
+        border-radius: 24px 0 0 24px;
         padding: 10px 16px;
         font-size: 13px;
         font-family: -apple-system, sans-serif;
+        white-space: nowrap;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        box-shadow: -2px 2px 8px rgba(0,0,0,0.3);
         opacity: 0.85;
         user-select: none;
+        transform: translateY(-50%) translateX(calc(100% - 14px));
+        transition: transform 0.2s ease, opacity 0.2s ease;
       }
-      #trc20-gen-btn:hover { opacity: 1; }
+      #trc20-gen-btn:hover {
+        opacity: 1;
+        transform: translateY(-50%) translateX(0);
+      }
       #trc20-gen-toast {
         position: fixed;
-        bottom: 65px;
+        top: 20px;
         right: 20px;
         z-index: 999999;
         background: #16213e;
