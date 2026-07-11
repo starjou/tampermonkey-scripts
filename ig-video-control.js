@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         IG Video Control
 // @namespace    https://www.jk-web.com/
-// @version      1.44
+// @version      1.45
 // @description  在 Instagram 影片加上全螢幕按鈕並自動取消靜音
 // @author       Jacky Jou
 // @match        https://www.instagram.com/*
@@ -93,9 +93,12 @@
         for (let i = 0; i < 15; i++) {
             const slider = root?.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
             if (slider) {
-                // Old: slider is wrapped by a [role="button"]
                 // New: slider IS the widget; mute toggle is a [role="button"] inside it
-                const btn = slider.closest('[role="button"]') || slider.querySelector('[role="button"]');
+                // Old: slider is wrapped by a [role="button"]
+                // Check inner first — IG now also wraps the whole video click-area in
+                // role="button", so .closest() can false-match that huge wrapper instead
+                // of the actual mute toggle.
+                const btn = slider.querySelector('[role="button"]') || slider.closest('[role="button"]');
                 if (btn) return btn;
             }
             // Old structure: button with aria-label
@@ -141,7 +144,7 @@
             if (!root) break;
             if (root.querySelectorAll('video').length > 1) break;
             const slider = root.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
-            if (slider) { const b = slider.closest('[role="button"]') || slider.querySelector('[role="button"]'); if (b) return b; }
+            if (slider) { const b = slider.querySelector('[role="button"]') || slider.closest('[role="button"]'); if (b) return b; }
             for (const sel of MUTE_BTN_SELECTORS) {
                 const b = root.querySelector(sel); if (b) return b;
             }

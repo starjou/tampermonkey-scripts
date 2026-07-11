@@ -167,15 +167,27 @@ const MUTED_SVG_SELECTORS = ['svg[aria-label="已靜音"]', 'svg[aria-label="Mut
 const PLAYING_SVG_SELECTORS = ['svg[aria-label="正在播放音效"]', 'svg[aria-label="Audio is playing"]'];
 ```
 
-`findMuteBtn` 的 slider 路徑：
+`findMuteBtn` 的 slider 路徑（v1.45+，新結構優先）：
 ```javascript
 const slider = root?.querySelector('[aria-label="調整音量"], [aria-label="Volume"]');
 if (slider) {
-    const btn = slider.closest('[role="button"]')    // 舊結構：slider 外面有 role=button
-             || slider.querySelector('[role="button"]'); // 新結構：mute button 在 slider 裡面
+    const btn = slider.querySelector('[role="button"]')  // 新結構：mute button 在 slider 裡面（優先）
+             || slider.closest('[role="button"]');        // 舊結構：slider 外面有 role=button
     if (btn) return btn;
 }
 ```
+
+---
+
+## v1.45：IG 把整個 video 點擊區也包成 role="button"
+
+2026-07 發現 `/reels/` 頁面（連續滾動介面，DOM 裡同時存在十幾個 video）FS 按鈕沒出現。實測發現 IG 現在連整個 video 的點擊區（507×903 那種大小的容器）都套了 `role="button"`，不再只有 mute toggle 本身有。
+
+`findMuteBtn` / `findMuteBtnInContext` 原本寫 `slider.closest('[role="button"]') || slider.querySelector('[role="button"]')`（先找「包住 slider 的按鈕」＝舊結構，找不到才找「slider 內部的按鈕」＝新結構）。但 `.closest()` 現在會先比對到那個外層的大 video 點擊區容器（它也是 slider 的祖先，也有 `role="button"`），導致抓到錯的「mute button」，FS 按鈕就定位到整個 video 容器的座標系（視覺上跑到很奇怪的位置或看起來像沒出現）。
+
+**修法**：順序反過來，`slider.querySelector('[role="button"]') || slider.closest('[role="button"]')`（新結構優先）。兩處都要改：`findMuteBtn` 和 `findMuteBtnInContext`。
+
+用 Chrome DevTools 在 `/reels/` 頁面實測驗證：`slider.querySelector('[role="button"]')` 抓到 28×28、位置對齊畫面上看到的靜音圖示；`slider.closest('[role="button"]')` 抓到的是 507×903 的整個 video 容器——這差異就是 bug 的直接證據。
 
 ---
 
