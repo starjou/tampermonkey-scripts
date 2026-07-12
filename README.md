@@ -39,6 +39,13 @@
 - 自動填入目前焦點欄位並複製到剪貼簿
 - 透過 Tampermonkey 選單自訂啟用的網址清單（比對網址是否包含關鍵字，輸入 `*` 可全站啟用）
 
+### YouTube 自動隱藏片尾推薦畫面
+**檔案：** `youtube-endscreen-autohide.js`<br>
+**適用：** https://www.youtube.com/watch*<br>
+**功能：**
+- 影片片尾推薦畫面（endscreen cards）出現時自動點擊「隱藏」
+- 仍可手動點「顯示」叫回來
+
 ## 安裝方式
 
 ### 手動安裝
@@ -49,6 +56,7 @@
    - [Ad Overlay Blocker](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.user.js)
    - [MSN 新聞跳轉至原始出處](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/msn-redirect.js)
    - [TRC20 測試地址產生器](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/trc20-test-address-generator.js)
+   - [YouTube 自動隱藏片尾推薦畫面](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/youtube-endscreen-autohide.js)
 
 ### 自動更新
 腳本內含 `@updateURL`，Tampermonkey 會定期檢查版本並自動更新。
