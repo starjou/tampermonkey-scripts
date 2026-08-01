@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Facebook Video Control
 // @namespace    https://www.jk-web.com/
-// @version      2.14
+// @version      2.15
 // @description  在 Facebook 的 Reels 顯示全螢幕控制器
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
@@ -67,16 +67,34 @@
 
         if (e.type === 'click') {
             if (e.target.paused) {
+                restorePlay(e.target);   // 使用者主動要播，先解除抑制
                 e.target.play();
             } else {
                 e.target.pause();
-                const originalPlay = e.target.play.bind(e.target);
-                e.target.play = () => Promise.resolve();
-                setTimeout(() => {
-                    e.target.play = originalPlay;
-                }, 300);
+                suppressPlay(e.target);
             }
         }
+    }
+
+    // 暫停後短暫把 play 換成 no-op，擋掉 FB 自己把影片接回去播。
+    // 一定要防重入：原本的寫法沒有守衛，300ms 內再點一次會把「已經被換掉的 stub」
+    // 當成 originalPlay 存起來，計時器到期後又把 stub 永久裝回 v.play，
+    // 從此 play() 永遠不做事——症狀是連點幾下之後連 play/pause 都失效。
+    const PLAY_SUPPRESS_MS = 300;
+
+    function suppressPlay(v) {
+        if (v._fbFsOrigPlay) return;   // 已經在抑制中，不要再包一層
+        v._fbFsOrigPlay = v.play;
+        v.play = () => Promise.resolve();
+        v._fbFsPlayTimer = setTimeout(() => restorePlay(v), PLAY_SUPPRESS_MS);
+    }
+
+    function restorePlay(v) {
+        if (!v._fbFsOrigPlay) return;
+        clearTimeout(v._fbFsPlayTimer);
+        v.play = v._fbFsOrigPlay;
+        v._fbFsOrigPlay = null;
+        v._fbFsPlayTimer = null;
     }
 
     function enableBlock(v) {
@@ -100,6 +118,7 @@
             document.removeEventListener(evt, blockClick, true);
             if (currentVideo) currentVideo.removeEventListener(evt, blockClick, true);
         });
+        if (currentVideo) restorePlay(currentVideo);   // 抑制中就離開全螢幕的話要收乾淨
         blockClickActive = false;
         currentVideo = null;
     }
