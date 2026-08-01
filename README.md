@@ -13,9 +13,11 @@
 
 ### Facebook Video Control
 **檔案：** `facebook-video-control.js`<br>
-**適用：** https://www.facebook.com/*<br>
+**適用：** https://www.facebook.com/reel/*<br>
 **功能：**
-- 在 Facebook Reels 加上全螢幕控制器
+- 自動取消靜音
+- 在 Reels 控制列加上倒轉 5 秒／快轉 5 秒／全螢幕按鈕（樣式沿用 FB 原生按鈕）
+- 全螢幕時使用 Chrome 原生播放器控制列，並額外疊上一組快轉／倒轉按鈕（滑鼠靜止後自動淡出）
 
 ### Ad Overlay Blocker
 **檔案：** `ad-blocker.user.js`（殼）、`ad-blocker.js`（邏輯）<br>
