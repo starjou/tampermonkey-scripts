@@ -211,7 +211,7 @@ if (slider) {
 Tampermonkey userscript，為 Facebook Reels 的影片自動取消靜音，並在控制列加上快轉／倒轉／全螢幕按鈕，全螢幕時另外疊一組快轉鈕。
 
 - **檔案**：`/home/wsl/tampermonkey-scripts/facebook-video-control.js`
-- **目前版本**：v2.14
+- **目前版本**：v2.16
 - **作用範圍**：網址含 `/reel/` 時才動作（`isReelVideo`）
 
 ---
@@ -290,6 +290,23 @@ target=VIDEO  elementFromPoint=VIDEO  命中快轉鈕=true  popoverOpen=true
 按鈕確實畫在那個座標上，`elementFromPoint` 卻回傳 VIDEO，綁在按鈕上的 listener 一次都沒被觸發。所以點擊改由 `blockClick`（本來就會攔全螢幕內所有 pointer 事件）用 `getBoundingClientRect()` 做落點比對後執行 `btn._run`，不依賴瀏覽器的 hit-testing。
 
 覆蓋層的顯示／隱藏：`mousemove` 重置計時、靜止 2.5s 淡出、滑鼠離開視窗（`mouseout` 且 `relatedTarget` 為 null）立即淡出。隱藏時用 `hidePopover()` 退出 top layer，**不要**只留透明覆蓋層——那會攔掉原生控制列的點擊。
+
+---
+
+## Icon：Material Symbols 與 optical size
+
+三個 icon（history / update / fullscreen）都是 **Material Symbols outlined**，網格 `0 -960 960 960`，跟舊的 Material Icons（`0 0 24 24`）是兩套分別繪製的圖，不能混用。
+
+**關鍵：Material Symbols 有 optical size 軸，每個尺寸是分別畫的，不是同一條 path 縮放。** 小尺寸版本會加粗筆畫、簡化細節以維持可讀性。所以 `ICON` 裡每個 icon 存兩份 path，`iconSvg` 依渲染尺寸挑：
+
+| 用途 | 渲染尺寸 | 用哪份 |
+|------|---------|--------|
+| 控制列按鈕 | 20px | `opsz20` |
+| 全螢幕快轉鈕 | 28px | `opsz24` |
+
+只存一份去縮放的話，小尺寸會太細（指針比圓弧細）、大尺寸又相對過粗——曾經因此跟 Google 網站上的圖對不起來，繞了一圈才發現是 optical size 而不是縮放算錯。
+
+原始 SVG 檔存在 repo 的 `icons/` 目錄（檔名帶 `opsz` 標記），是 inline path 的來源，要換 icon 或加尺寸時從那裡取，不用再去 Google 下載。
 
 ---
 
