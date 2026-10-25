@@ -375,7 +375,7 @@ Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新�
 
 ## FB 靠兩條路判斷「使用者回來了」，兩條都要擋
 
-2026-10 用診斷探針（只記錄、可切換只擋某一種事件）實測，每輪都離開 13 分鐘以上：
+2026-10 用診斷探針（`tools/fb-refresh-probe.user.js`，見下方「診斷探針」）實測，每輪都離開 13 分鐘以上：
 
 | 擋了什麼 | 結果 |
 |---------|------|
@@ -399,6 +399,53 @@ Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新�
 - **只擋 target 是 `window` / `document` 的**：輸入框、連結的 focus/blur 也會經過 window capture，全擋的話 FB 的留言框等互動會出問題
 - **同時覆寫狀態**：`document.hidden`、`visibilityState`、`hasFocus()`，避免 FB 主動讀取時看出破綻
 - **`location.reload` 掛不上**：實測對 `location` 本身 `defineProperty` 會丟 `Cannot redefine property: reload`。依規格這些方法是 instance 上的 unforgeable 屬性，所以 v1.8 以前覆寫 `Location.prototype.reload` 的做法應該也會被 instance 自己的屬性蓋過（這點是依規格推論，沒實測）
+
+---
+
+## 診斷探針
+
+**檔案**：`tools/fb-refresh-probe.user.js`（獨立的 userscript，沒有 `@updateURL`，不會被自動更新蓋掉）
+
+使用者回報「又會重整了」時，先用它量出實際機制再改腳本，不要憑推測改。
+
+### 記錄什麼
+
+紀錄存在 `sessionStorage`，同一個分頁 reload 或被 Chrome 丟棄還原後都還在，最多留 400 筆。
+
+- 啟動資訊：`BLOCK` 模式、`navigation.type`、`wasDiscarded`、啟動時頁面上已有幾個 `<script>`
+- 事件：`visibilitychange`、`focus`/`blur`、`pageshow`/`pagehide`、`freeze`/`resume`、`beforeunload` 等，連同當下真實的 hidden / visibilityState / hasFocus
+- `history.pushState` / `replaceState` 呼叫
+- `heartbeat-gap`：1 秒心跳間隔超過 3 秒才記，用來看分頁在背景多久、JS 有沒有被凍結（背景時 Chrome 會把計時器降到每分鐘一次，看到約 60 秒的 gap 是正常的）
+- 切回來後 60 秒內的 `/api/graphql` 請求：`fb_api_req_friendly_name` + 呼叫堆疊
+
+### `BLOCK` 開關（一次只改一個變因）
+
+| 值 | 效果 |
+|----|------|
+| `'none'`（預設） | 純觀察，不改任何行為 |
+| `'visibility'` | 擋真實的 `visibilitychange`，並覆寫 `hidden` / `visibilityState` |
+| `'focus'` | 擋 target 為 window 的 `focus` / `blur`，並覆寫 `hasFocus()` |
+| `'both'` | 兩種都擋（= v2.0 的做法） |
+
+### 步驟
+
+1. 停用「Facebook 防自動重整」，裝探針、設好 `BLOCK`，重新整理 FB
+2. 關掉 DevTools，切到別的分頁放 15 分鐘以上再切回來，記下有沒有刷新
+3. **不要重新整理**，在 console 執行 `copy(__fbProbeReport())`，把剪貼簿內容貼回來
+
+### 怎麼判讀
+
+- `載入後秒數` 很大 → 頁面沒重新載入，是 FB 在頁面內重新渲染（腳本能處理）
+- 載入資訊裡 `wasDiscarded=true` → 分頁被 Chrome 丟棄（腳本無解）
+- 切回來那一刻有 `blocked:…` → 該模式確實擋到了；沒有的話這輪實驗不算數
+- 網路請求區塊：刷新時重抓動態牆的請求名稱與堆疊
+
+### 陷阱
+
+- **換版本或手動重新整理前，先把紀錄印出來**：每次載入都會把上一輪的紀錄搬到 `_prev`、清空本輪，接著再重新整理就蓋掉了
+- **離開不夠久不會觸發刷新**：觸發條件跟離開時間有關，離開幾十秒的資料無法判斷
+- **`location.reload` / `assign` / `replace` 掛不上**，紀錄裡的 `hook:… FAILED` 是正常的
+- 要看 FB 實際掛了哪些 listener，在 console 用 DevTools 內建的 `getEventListeners(window)` / `getEventListeners(document)`（只能在 console 裡用，腳本裡呼叫不到）
 
 ---
 
