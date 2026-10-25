@@ -19,6 +19,13 @@
 - 在 Reels 控制列加上倒轉 5 秒／快轉 5 秒／全螢幕按鈕（樣式沿用 FB 原生按鈕）
 - 全螢幕時使用 Chrome 原生播放器控制列，並額外疊上一組快轉／倒轉按鈕（滑鼠靜止後自動淡出）
 
+### Facebook 防自動重整
+**檔案：** `facebook-no-refresh.js`<br>
+**適用：** https://www.facebook.com/*<br>
+**功能：**
+- 防止切回 Facebook 分頁時動態牆自動刷新
+- 註：長時間閒置後被 Chrome「記憶體節省模式」丟棄的分頁，切回來時的重新載入無法由腳本阻擋，需關閉該模式
+
 ### Ad Overlay Blocker
 **檔案：** `ad-blocker.user.js`（殼）、`ad-blocker.js`（邏輯）<br>
 **適用：** 所有網站<br>
@@ -55,6 +62,7 @@
 2. 點擊下方連結，Tampermonkey 會自動偵測並提示安裝：
    - [IG Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ig-video-control.js)
    - [Facebook Video Control](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/facebook-video-control.js)
+   - [Facebook 防自動重整](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/facebook-no-refresh.js)
    - [Ad Overlay Blocker](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ad-blocker.user.js)
    - [MSN 新聞跳轉至原始出處](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/msn-redirect.js)
    - [TRC20 測試地址產生器](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/trc20-test-address-generator.js)

@@ -1,6 +1,6 @@
 # Tampermonkey Scripts — 開發筆記
 
-這個 repo 有多支 userscript，以下依腳本分節。目前有詳細筆記的是 IG 與 Facebook 兩支影片控制腳本，其餘腳本較單純，直接看原始碼即可。
+這個 repo 有多支 userscript，以下依腳本分節。目前有詳細筆記的是 IG、Facebook 兩支影片控制腳本與 Facebook 防自動重整，其餘腳本較單純，直接看原始碼即可。
 
 ---
 
@@ -348,3 +348,61 @@ target=VIDEO  elementFromPoint=VIDEO  命中快轉鈕=true  popoverOpen=true
 
 1. **兩支影片同時被解靜音**：捲動時相鄰的 reel 短暫進入 viewport 也會被處理。目前沒觀察到聲音重疊（可能 FB 自己會暫停非當前影片），先觀察。
 2. **按鈕偶爾消失**：FB re-render 控制列時會移除我們的節點，靠 500ms polling 補回。
+
+---
+
+# Facebook 防自動重整
+
+## 專案概覽
+
+Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新。
+
+- **檔案**：`/home/wsl/tampermonkey-scripts/facebook-no-refresh.js`
+- **目前版本**：v2.0
+
+---
+
+## 「刷新」其實有兩種，來源不同
+
+| 現象 | 判斷依據 | 能不能用腳本擋 |
+|------|---------|--------------|
+| FB 在頁面內重新渲染動態牆 | `performance.now()` 很大（頁面沒重新載入） | 可以，本腳本處理的就是這個 |
+| Chrome 丟棄閒置分頁，切回來時重新載入 | `document.wasDiscarded === true` | 不行，分頁被丟棄時沒有 JS 在跑。只能關掉 Chrome 的「記憶體節省模式」 |
+
+使用者肉眼分不出這兩種，回報「還是會重整」時要先分清楚是哪一種，否則會拿錯的證據去改腳本。
+
+---
+
+## FB 靠兩條路判斷「使用者回來了」，兩條都要擋
+
+2026-10 用診斷探針（只記錄、可切換只擋某一種事件）實測，每輪都離開 13 分鐘以上：
+
+| 擋了什麼 | 結果 |
+|---------|------|
+| 只擋 `visibilitychange`（= v1.9 的做法） | 還是刷新 |
+| 只擋 window 的 `focus` / `blur` | 還是刷新 |
+| 兩個一起擋 | 不刷新 |
+
+用 DevTools 的 `getEventListeners(window)` / `getEventListeners(document)` 看到的 FB listener：
+
+- `visibilitychange`：全部掛在 `document`、非 capture，其中一支是「回到可見時，距離某時間點超過門檻就做事」的邏輯（`if(n-Xe>=je)`）
+- `focus` / `blur`：掛在 `window`，各十支左右，其中 blur 會啟動一個 `setInterval(R, 6e5)`（10 分鐘）
+
+壓縮過的程式碼看不出 `R` 實際做什麼，所以結論只依實驗結果：兩條都會觸發刷新。
+
+---
+
+## 擋法的細節
+
+- **掛在 `window` capture**：事件路徑是 window → document，這是最早的位置；在 `document-start` 註冊，所以排在 FB 所有 listener 前面（`getEventListeners` 確認我們是 #0）
+- **只擋 `isTrusted` 的事件**：關閉 Reel 時 FB 會自己 dispatch 一個 `visibilitychange` 當作回到 feed 的訊號，擋掉會整頁重建（v1.8 踩過）。v1.9 用旗標判斷，v2.0 改用 `isTrusted`：分頁真的可見時，瀏覽器不會發 `visibilitychange`，所以這時收到的一定是 synthetic
+- **只擋 target 是 `window` / `document` 的**：輸入框、連結的 focus/blur 也會經過 window capture，全擋的話 FB 的留言框等互動會出問題
+- **同時覆寫狀態**：`document.hidden`、`visibilityState`、`hasFocus()`，避免 FB 主動讀取時看出破綻
+- **`location.reload` 掛不上**：實測對 `location` 本身 `defineProperty` 會丟 `Cannot redefine property: reload`。依規格這些方法是 instance 上的 unforgeable 屬性，所以 v1.8 以前覆寫 `Location.prototype.reload` 的做法應該也會被 instance 自己的屬性蓋過（這點是依規格推論，沒實測）
+
+---
+
+## 未解決 / 待觀察
+
+1. **副作用**：FB 會一直以為你在看這個分頁，可能影響訊息已讀、通知、背景影片暫停等依賴可見/焦點的行為，未實測
+2. **只做過一輪「兩個一起擋」的實驗**：最終驗收是日常使用一兩天，看還會不會刷新
