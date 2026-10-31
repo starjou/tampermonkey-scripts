@@ -55,6 +55,17 @@
 - 影片片尾推薦畫面（endscreen cards）出現時自動點擊「隱藏」
 - 仍可手動點「顯示」叫回來
 
+### 萬用網頁自動朗讀
+**檔案：** `web-tts-reader.js`<br>
+**適用：** 所有網站（實際只在自己設定過的網址規則上作用）<br>
+**功能：**
+- 用瀏覽器的語音朗讀網頁正文，一頁讀完自動載入下一頁接著讀（網址也跟著換，重新整理能接著讀）
+- 每個網站用點選方式設定一次：正文區塊、下一頁連結、要略過的段落（CSS 選擇器可自動產生，有預覽可先確認）
+- 下一頁可選「直接下載」或「隱藏頁框」載入（網站用 JS 處理文字時用後者），會自己判斷 Big5／GBK 編碼
+- 可調語速、每次送出的字數（段落間停頓）、聲音；朗讀中的段落會反白，點段落可從那裡開始，空白鍵播放／暫停
+- 規則存在 Tampermonkey 儲存空間，可在「管理所有網站規則」匯出／匯入 JSON
+- 註：Edge 內建的中文 Natural 語音品質最好；其他瀏覽器沒有 Natural 語音或完全沒有語音時，面板會提示改用 Edge
+
 ## 安裝方式
 
 ### 手動安裝
@@ -67,6 +78,7 @@
    - [MSN 新聞跳轉至原始出處](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/msn-redirect.js)
    - [TRC20 測試地址產生器](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/trc20-test-address-generator.js)
    - [YouTube 自動隱藏片尾推薦畫面](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/youtube-endscreen-autohide.js)
+   - [萬用網頁自動朗讀](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/web-tts-reader.js)
 
 ### 自動更新
 腳本內含 `@updateURL`，Tampermonkey 會定期檢查版本並自動更新。
