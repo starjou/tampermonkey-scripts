@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         FB 重整診斷探針
 // @namespace    https://www.jk-web.com/
-// @version      0.4
+// @version      0.5
 // @description  記錄 Facebook 自動重整前後發生的每個訊號，並可切換只擋某一種事件，用來判斷重整的真正來源
 // @author       Jacky Jou
 // @match        https://www.facebook.com/*
@@ -102,20 +102,31 @@
         'beforeunload', 'unload', 'online', 'offline', 'popstate', 'hashchange',
     ];
     EVENTS.forEach((type) => {
-        window.addEventListener(type, (e) => log('ev:' + type, { target: e.target === document ? 'document' : (e.target === window ? 'window' : (e.target.nodeName || String(e.target))) }), true);
+        window.addEventListener(type, (e) => log('ev:' + type, {
+            target: e.target === document ? 'document' : (e.target === window ? 'window' : (e.target.nodeName || String(e.target))),
+            // 關 Reel 時 FB 自己發的 visibilitychange 是不是 synthetic，就看這個
+            trusted: e.isTrusted,
+        }), true);
     });
     // visibilitychange 的正式 target 是 document。window capture 會比 document 更早跑到，
     // 這裡再補一個 document 上的，用來確認兩個位置都收得到（這正是原腳本漏掉的那一層）。
     document.addEventListener('visibilitychange', () => log('ev:visibilitychange@document'), true);
 
-    // ---- 網路請求：切回來後 60 秒內的 GraphQL 請求，連同呼叫堆疊一起記 ----
+    // ---- 網路請求：觸發點之後 60 秒內的 GraphQL 請求，連同呼叫堆疊一起記 ----
     // 就算事件全擋了還是刷新，FB 重抓動態牆的那支請求一定還是會發出去，
     // 它的 friendly name 和 stack 能指出是哪段程式觸發的。
-    // 這個 listener 要註冊在下面的攔截之前，否則被 stopImmediatePropagation 擋掉就記不到切回來的時間。
-    let lastReturn = 0;
-    window.addEventListener('visibilitychange', () => {
-        if (!_realHidden.call(document)) lastReturn = Date.now();
-    }, true);
+    // 觸發點：任何 visibilitychange（含 FB 自己發的 synthetic）、popstate、換到非 Reel 的網址（= 關掉 Reel）。
+    // 看 Reel 時每滑一支都會換網址，所以 /reel/ 之間的切換不算，否則紀錄會被塞滿。
+    // 這個 listener 要註冊在下面的攔截之前，否則被 stopImmediatePropagation 擋掉就記不到。
+    let lastTrigger = 0;
+    let lastTriggerWhy = '';
+    function markTrigger(why) {
+        lastTrigger = Date.now();
+        lastTriggerWhy = why;
+    }
+    const isReelPath = () => location.pathname.includes('/reel');
+    window.addEventListener('visibilitychange', (e) => markTrigger('visibilitychange' + (e.isTrusted ? '' : '(synthetic)')), true);
+    window.addEventListener('popstate', () => { if (!isReelPath()) markTrigger('popstate'); }, true);
     function friendlyName(body) {
         try {
             if (typeof body === 'string') return new URLSearchParams(body).get('fb_api_req_friendly_name');
@@ -125,11 +136,12 @@
     }
     function logRequest(via, url, body) {
         if (!/\/api\/graphql/.test(String(url))) return;
-        const since = Date.now() - lastReturn;
-        if (!lastReturn || since > 60000) return;
+        const since = Date.now() - lastTrigger;
+        if (!lastTrigger || since > 60000) return;
         log('net:' + via, {
             n: friendlyName(body) || '(unknown)',
-            sinceReturnMs: since,
+            after: lastTriggerWhy,
+            sinceMs: since,
             stack: (new Error().stack || '').split('\n').slice(2, 14).map((s) => s.trim()).join(' | '),
         });
     }
@@ -210,8 +222,23 @@
     }
     try {
         const _ps = history.pushState, _rs = history.replaceState;
-        history.pushState = function (...a) { log('call:history.pushState', { u: String(a[2]) }); return _ps.apply(this, a); };
-        history.replaceState = function (...a) { log('call:history.replaceState', { u: String(a[2]) }); return _rs.apply(this, a); };
+        // 呼叫完才判斷網址，換到非 Reel 頁面就當作「關掉 Reel」的觸發點
+        history.pushState = function (...a) {
+            log('call:history.pushState', { u: String(a[2]) });
+            const r = _ps.apply(this, a);
+            if (!isReelPath()) markTrigger('pushState');
+            return r;
+        };
+        history.replaceState = function (...a) {
+            log('call:history.replaceState', { u: String(a[2]) });
+            const r = _rs.apply(this, a);
+            if (!isReelPath()) markTrigger('replaceState');
+            return r;
+        };
+        // FB 關 Reel 可能是 history.back()，觸發點交給 popstate 記
+        const _back = history.back, _go = history.go;
+        history.back = function (...a) { log('call:history.back'); return _back.apply(this, a); };
+        history.go = function (...a) { log('call:history.go', { delta: a[0] }); return _go.apply(this, a); };
         log('hook:history', 'ok');
     } catch (e) {
         log('hook:history', 'FAILED ' + e.message);
@@ -231,7 +258,7 @@
     // 回傳同一份文字，所以 copy(__fbProbeReport()) 可以直接複製到剪貼簿
     window.__fbProbeReport = () => {
         const isNet = (r) => r.tag.startsWith('net:');
-        const f = (r) => `${r.t}ms\t${r.tag}\thidden=${r.realHidden}\tvis=${r.vis}\tfocus=${r.focus}\t${r.extra ? JSON.stringify(r.extra).slice(0, isNet(r) ? 1500 : 150) : ''}`;
+        const f = (r) => `${r.t}ms\t${r.tag}\t${r.url}\thidden=${r.realHidden}\tvis=${r.vis}\tfocus=${r.focus}\t${r.extra ? JSON.stringify(r.extra).slice(0, isNet(r) ? 1500 : 150) : ''}`;
         const cur = load();
         const ev = cur.filter((r) => !isNet(r));
         const net = cur.filter(isNet);

@@ -416,7 +416,8 @@ Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新�
 - 事件：`visibilitychange`、`focus`/`blur`、`pageshow`/`pagehide`、`freeze`/`resume`、`beforeunload` 等，連同當下真實的 hidden / visibilityState / hasFocus
 - `history.pushState` / `replaceState` 呼叫
 - `heartbeat-gap`：1 秒心跳間隔超過 3 秒才記，用來看分頁在背景多久、JS 有沒有被凍結（背景時 Chrome 會把計時器降到每分鐘一次，看到約 60 秒的 gap 是正常的）
-- 切回來後 60 秒內的 `/api/graphql` 請求：`fb_api_req_friendly_name` + 呼叫堆疊
+- 觸發點後 60 秒內的 `/api/graphql` 請求：`fb_api_req_friendly_name` + 呼叫堆疊。觸發點是任何 `visibilitychange`（含 synthetic）、`popstate`、換到非 `/reel` 的網址（= 關掉 Reel）
+- 每個事件都記 `isTrusted`；`history.back()` / `go()` 呼叫也會記
 
 ### `BLOCK` 開關（一次只改一個變因）
 
@@ -453,3 +454,13 @@ Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新�
 
 1. **副作用**：FB 會一直以為你在看這個分頁，可能影響訊息已讀、通知、背景影片暫停等依賴可見/焦點的行為，未實測
 2. **只做過一輪「兩個一起擋」的實驗**：最終驗收是日常使用一兩天，看還會不會刷新
+3. **關掉 Reel modal 後動態牆被清空重建**（v2.0 上線後回報，2026-10-27）：**不是本腳本造成的，是 FB 原生行為**。探針 `BLOCK='none'`、防重整停用的狀態下照樣發生，紀錄如下（同一次載入，頁面沒 reload）：
+
+   | 離開 feed 多久（pushState 到 `/reel/` → popstate 回 `/`） | 回到 `/` 後有沒有 `CometModernHomeFeedQuery` |
+   |------|------|
+   | 2～22 秒（開相片、貼文） | 沒有 |
+   | 約 19.8 分鐘（看 Reel） | 沒有 |
+   | 約 47.4 分鐘（看 Reel） | 有，popstate 後 242ms 送出 |
+
+   關 Reel 的流程是 FB 自己呼叫 `history.go(-1)` → trusted `popstate` 回 `/`，前後**沒有** `visibilitychange`，也沒有 target 是 window 的 focus/blur，所以 v2.0 擋的東西跟這件事無關、也擋不到。看起來是「離開 feed 超過某個時間門檻，回來就重抓」，門檻落在 20～47 分鐘之間（只有兩個資料點，實際值與判斷邏輯都未確認）。
+   歷史線索（已被這次實驗推翻）：v1.8 的 commit 留言懷疑是 focus/blur 攔截造成的；v1.5～v1.7 憑推測去攔 popstate / `history.back()` 全部失敗。
