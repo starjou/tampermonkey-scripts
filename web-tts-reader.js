@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         萬用網頁自動朗讀
 // @namespace    jacky.tts
-// @version      1.1
+// @version      1.2
 // @description  用 Edge 的 Natural 語音朗讀任何網站的正文，讀完自動接下一頁。每個網站用點選方式設定一次即可。
 // @author       Jacky Jou
 // @match        *://*/*
@@ -9,6 +9,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
 // @run-at       document-idle
 // @updateURL    https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/web-tts-reader.js
 // @downloadURL  https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/web-tts-reader.js
@@ -193,6 +194,19 @@
   let idleTicks = 0;
   const keep = [];       // 保留 utterance 參照，避免被回收導致 onend 不觸發
 
+  // 診斷紀錄：朗讀忽然停住時，用 Tampermonkey 選單的「🩺 複製診斷紀錄」倒出來。
+  // 常駐但很輕（只在事件發生時寫一行，最多留 400 行）。
+  const recs = [];
+  const rec0 = performance.now();
+  let lastBoundaryAt = 0;
+  let engineSig = '';
+  function rec(s) {
+    recs.push(`${((performance.now() - rec0) / 1000).toFixed(1)}s hidden=${document.hidden}`
+      + ` speaking=${synth.speaking} pending=${synth.pending} paused=${synth.paused}`
+      + ` 第${idx + 1}段 | ${s}`);
+    if (recs.length > 400) recs.shift();
+  }
+
   function prefetch(url) {
     nextInfo = url ? { url, promise: loadPage(url, rule).catch(() => null) } : null;
   }
@@ -272,6 +286,7 @@
     }
 
     console.log(`${TAG} 送出第 ${i + 1}～${end + 1} 段，共 ${text.length} 字`);
+    rec(`speak 第 ${i + 1}～${end + 1} 段，${text.length} 字`);
     highlight(i);
     const u = new SpeechSynthesisUtterance(text);
 
@@ -287,13 +302,15 @@
     // 有的語音會回報唸到哪個字；沒回報就用時間推算
     let gotBoundary = false;
     let t0 = 0;
-    u.onboundary = e => { gotBoundary = true; setPos(e.charIndex); };
+    u.onboundary = e => { gotBoundary = true; lastBoundaryAt = performance.now(); setPos(e.charIndex); };
 
     const v = pickVoice();
     if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'zh-TW'; }
     u.rate = Number(settings.rate) || 1;
 
     u.onstart = () => {
+      rec(`onstart ${u.voice ? u.voice.name : '(預設語音)'}`);
+      lastBoundaryAt = performance.now();
       idleTicks = 0;
       t0 = performance.now();
       clearInterval(estTimer);
@@ -303,6 +320,7 @@
       }, 400);
     };
     u.onend = () => {
+      rec('onend');
       clearInterval(estTimer);
       if (!gotBoundary && t0) { // 用這批實際花的時間校正語速估計
         const sec = (performance.now() - t0) / 1000;
@@ -314,6 +332,7 @@
       if (currentUtter === u && playing) speak(end + 1);
     };
     u.onerror = e => {
+      rec(`onerror ${e.error}${currentUtter === u && playing ? '' : '（我們自己取消的）'}`);
       if (currentUtter !== u || !playing) return; // 是我們自己暫停／跳段取消的
       console.warn(TAG, e.error);
       if (e.error === 'interrupted' || e.error === 'canceled') {
@@ -334,6 +353,7 @@
     if (loading) return;
     if (!nextInfo) { playing = false; updateBtn(); setStatus('已經是最後一頁了'); return; }
     loading = true;
+    rec('換頁：開始載入 ' + nextInfo.url);
     setStatus('載入下一頁…');
     let data = await nextInfo.promise;
     if (!data) { try { data = await loadPage(nextInfo.url, rule); } catch { data = null; } }
@@ -352,6 +372,7 @@
     curUrl = data.url;
     try { history.replaceState(null, '', data.url); } catch {} // 網址跟著走，之後重新整理能接著讀
     window.scrollTo(0, 0);
+    rec('換頁完成 ' + data.url);
     prefetch(data.next);
     idx = 0;
     if (!paras.length) { goNext(); return; }
@@ -366,17 +387,33 @@
 
   // 保險：語音無聲無息停掉（onend、onerror 都沒觸發）時，自動從目前段落重唸
   setInterval(() => {
+    if (playing) { // 引擎狀態一變就記一行，事後才看得出是哪一種停法
+      const sig = `${synth.speaking}/${synth.pending}/${synth.paused}/${document.hidden}`;
+      if (sig !== engineSig) { engineSig = sig; rec('引擎狀態改變'); }
+      // 還在發聲卻很久沒回報唸到哪個字 → 反白會卡住
+      if (synth.speaking && lastBoundaryAt && performance.now() - lastBoundaryAt > 10000) {
+        rec(`已 ${((performance.now() - lastBoundaryAt) / 1000).toFixed(0)} 秒沒有 boundary`);
+        lastBoundaryAt = performance.now();
+      }
+    }
     if (!playing || loading || !currentUtter || synth.speaking || synth.pending) { idleTicks = 0; return; }
-    if (++idleTicks >= 2) { idleTicks = 0; console.warn(TAG, '語音停住了，重新開始這一段'); speak(idx); }
+    if (++idleTicks >= 2) {
+      idleTicks = 0;
+      rec('看門狗：重唸這一段');
+      console.warn(TAG, '語音停住了，重新開始這一段');
+      speak(idx);
+    }
   }, 1500);
 
   // 背景（最小化／切到別的 app）時計時器會被節流，上面的看門狗幾乎不跑，
   // 所以回到前景時立刻補一次檢查：等同使用者自己按一下暫停再播放
   document.addEventListener('visibilitychange', () => {
+    rec(document.hidden ? '切到背景' : '回到前景');
     if (document.hidden || !playing || loading) return;
     idleTicks = 0;
     if (synth.paused) { synth.resume(); return; } // 被外部暫停的話先試著接回去
     if (!synth.speaking && !synth.pending) {
+      rec('回到前景時語音已停，接著唸');
       console.warn(TAG, '回到前景時語音已經停了，從第', idx + 1, '段接著唸');
       speak(idx);
     }
@@ -827,6 +864,16 @@
 
   GM_registerMenuCommand('⚙ 設定這個網站的朗讀', () => openConfig(findRule(location.href)));
   GM_registerMenuCommand('📋 管理所有網站規則', openManager);
+  GM_registerMenuCommand('🩺 複製診斷紀錄', () => {
+    const txt = recs.join('\n');
+    console.log(txt); // 一定會印一份，萬一複製失敗可以從 Console（F12）拿
+    if (typeof GM_setClipboard === 'function') {
+      GM_setClipboard(txt, 'text');
+      alert(`已複製 ${recs.length} 行診斷紀錄`);
+    } else {
+      alert(`${recs.length} 行診斷紀錄已印在 Console（F12）`);
+    }
+  });
 
   // 空白鍵＝播放／暫停（只在有套用規則的網頁、且不是在輸入框裡）
   document.addEventListener('keydown', e => {
