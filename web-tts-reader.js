@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         萬用網頁自動朗讀
 // @namespace    jacky.tts
-// @version      1.0
+// @version      1.1
 // @description  用 Edge 的 Natural 語音朗讀任何網站的正文，讀完自動接下一頁。每個網站用點選方式設定一次即可。
 // @author       Jacky Jou
 // @match        *://*/*
@@ -369,6 +369,18 @@
     if (!playing || loading || !currentUtter || synth.speaking || synth.pending) { idleTicks = 0; return; }
     if (++idleTicks >= 2) { idleTicks = 0; console.warn(TAG, '語音停住了，重新開始這一段'); speak(idx); }
   }, 1500);
+
+  // 背景（最小化／切到別的 app）時計時器會被節流，上面的看門狗幾乎不跑，
+  // 所以回到前景時立刻補一次檢查：等同使用者自己按一下暫停再播放
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !playing || loading) return;
+    idleTicks = 0;
+    if (synth.paused) { synth.resume(); return; } // 被外部暫停的話先試著接回去
+    if (!synth.speaking && !synth.pending) {
+      console.warn(TAG, '回到前景時語音已經停了，從第', idx + 1, '段接著唸');
+      speak(idx);
+    }
+  });
 
   function togglePlay() {
     if (!paras.length) return;
