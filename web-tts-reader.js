@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         萬用網頁自動朗讀
 // @namespace    jacky.tts
-// @version      1.2
+// @version      1.3
 // @description  用 Edge 的 Natural 語音朗讀任何網站的正文，讀完自動接下一頁。每個網站用點選方式設定一次即可。
 // @author       Jacky Jou
 // @match        *://*/*
@@ -192,6 +192,7 @@
   let currentUtter = null;
   let estTimer = null;   // 語音沒回報字位時，用時間推算唸到哪一段
   let idleTicks = 0;
+  let settling = null;   // 剛 cancel 掉的那句還沒收尾時，等它的 Promise（見 stopSpeech）
   const keep = [];       // 保留 utterance 參照，避免被回收導致 onend 不觸發
 
   // 診斷紀錄：朗讀忽然停住時，用 Tampermonkey 選單的「🩺 複製診斷紀錄」倒出來。
@@ -309,6 +310,7 @@
     u.rate = Number(settings.rate) || 1;
 
     u.onstart = () => {
+      u._started = true;
       rec(`onstart ${u.voice ? u.voice.name : '(預設語音)'}`);
       lastBoundaryAt = performance.now();
       idleTicks = 0;
@@ -320,6 +322,7 @@
       }, 400);
     };
     u.onend = () => {
+      if (u._settle) u._settle();
       rec('onend');
       clearInterval(estTimer);
       if (!gotBoundary && t0) { // 用這批實際花的時間校正語速估計
@@ -332,6 +335,7 @@
       if (currentUtter === u && playing) speak(end + 1);
     };
     u.onerror = e => {
+      if (u._settle) u._settle();
       rec(`onerror ${e.error}${currentUtter === u && playing ? '' : '（我們自己取消的）'}`);
       if (currentUtter !== u || !playing) return; // 是我們自己暫停／跳段取消的
       console.warn(TAG, e.error);
@@ -345,7 +349,19 @@
     currentUtter = u;
     keep.push(u);
     if (keep.length > 20) keep.shift();
-    synth.speak(u);
+    const send = () => {
+      if (currentUtter !== u || !playing) return; // 等的期間又被換掉或暫停了
+      u._sentAt = performance.now();
+      synth.speak(u);
+    };
+    if (settling) { // 剛 cancel 過：等舊的那句真的收尾才送，見 stopSpeech 的說明
+      const s = settling;
+      settling = null;
+      rec('等上一句收尾才送出');
+      s.then(() => setTimeout(send, 50));
+    } else {
+      send();
+    }
     setStatus(`第 ${i + 1} / ${paras.length} 段`);
   }
 
@@ -379,9 +395,17 @@
     if (playing) speak(0); else setStatus('已載入下一頁，按 ▶ 繼續');
   }
 
+  // Edge 的 Natural 語音：cancel() 之後 synth.speaking 會馬上變 false，但被取消的那句要再過一下
+  // 才發出 interrupted。這時立刻 speak() 新的一句，新的會照唸，卻收不到 onstart／boundary／onend
+  // → 反白卡住，唸完也不會接下一段（2026-11-05 診斷紀錄：調語速時發生）。
+  // 所以 cancel 時記下「舊的那句還沒收尾」，speak() 等它收尾（最多 600ms）才送出新的。
   function stopSpeech() {
+    const old = currentUtter;
     currentUtter = null;
     clearInterval(estTimer);
+    if (old && (synth.speaking || synth.pending)) {
+      settling = new Promise(res => { old._settle = res; setTimeout(res, 600); });
+    }
     synth.cancel();
   }
 
@@ -395,6 +419,15 @@
         rec(`已 ${((performance.now() - lastBoundaryAt) / 1000).toFixed(0)} 秒沒有 boundary`);
         lastBoundaryAt = performance.now();
       }
+    }
+    // 送出超過 5 秒、引擎說在唸，卻一直沒收到 onstart → 這句的事件被搞丟了，重送
+    const cu = currentUtter;
+    if (playing && cu && !cu._started && cu._sentAt && synth.speaking
+        && performance.now() - cu._sentAt > 5000) {
+      rec('送出 5 秒沒收到 onstart，重送這一段');
+      stopSpeech();
+      speak(idx);
+      return;
     }
     if (!playing || loading || !currentUtter || synth.speaking || synth.pending) { idleTicks = 0; return; }
     if (++idleTicks >= 2) {
