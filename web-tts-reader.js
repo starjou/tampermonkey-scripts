@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         萬用網頁自動朗讀
 // @namespace    jacky.tts
-// @version      1.3
+// @version      1.4
 // @description  用 Edge 的 Natural 語音朗讀任何網站的正文，讀完自動接下一頁。每個網站用點選方式設定一次即可。
 // @author       Jacky Jou
 // @match        *://*/*
@@ -184,6 +184,7 @@
   let rule = null;       // 目前網頁套用的規則
   let paras = [];        // [{ text, el }]
   let idx = 0;
+  let posInPara = 0;     // 目前唸到第 idx 段的第幾個字（只用語音回報的字位，不用估算）
   let playing = false;
   let loading = false;
   let carry = '';        // 上一頁被切斷的半句，接到下一頁開頭
@@ -259,15 +260,18 @@
       || null;
   }
 
-  function speak(i) {
+  // from：從這一段的第幾個字開始唸（改語速時接著唸，不從段落開頭重來）
+  function speak(i, from = 0) {
     if (!playing) return;
     if (i >= paras.length) { goNext(); return; }
     idx = i;
     const para = paras[i];
+    const from0 = from > 0 && from < para.text.length ? from : 0;
+    posInPara = from0;
 
     // 最後一段沒講完（句子被切到下一頁）→ 先不唸，接到下一頁開頭一起唸
     if (i === paras.length - 1 && nextInfo && !END_PUNCT.test(para.text)) {
-      carry = para.text;
+      carry = para.text.slice(from0);
       goNext();
       return;
     }
@@ -275,7 +279,7 @@
     // 從第 i 段開始，把後面的段落湊成一次朗讀（減少段落之間的停頓）
     const max = Number(settings.chunk) || 1500;
     let end = i;
-    let text = para.text;
+    let text = para.text.slice(from0);
     const starts = [0]; // 每段在 text 裡的起始位置，用來同步反白
     while (end + 1 < paras.length) {
       const nx = paras[end + 1];
@@ -287,7 +291,7 @@
     }
 
     console.log(`${TAG} 送出第 ${i + 1}～${end + 1} 段，共 ${text.length} 字`);
-    rec(`speak 第 ${i + 1}～${end + 1} 段，${text.length} 字`);
+    rec(`speak 第 ${i + 1}～${end + 1} 段，${text.length} 字${from0 ? `（從第 ${i + 1} 段第 ${from0 + 1} 字起）` : ''}`);
     highlight(i);
     const u = new SpeechSynthesisUtterance(text);
 
@@ -296,14 +300,21 @@
       while (k + 1 < starts.length && ch >= starts[k + 1]) k++;
       if (currentUtter === u && i + k !== idx) {
         idx = i + k;
+        posInPara = 0; // 換段了；真正的字位等下一個 boundary 再補
         highlight(idx);
         setStatus(`第 ${idx + 1} / ${paras.length} 段`);
       }
+      return k;
     };
     // 有的語音會回報唸到哪個字；沒回報就用時間推算
     let gotBoundary = false;
     let t0 = 0;
-    u.onboundary = e => { gotBoundary = true; lastBoundaryAt = performance.now(); setPos(e.charIndex); };
+    u.onboundary = e => {
+      gotBoundary = true;
+      lastBoundaryAt = performance.now();
+      const k = setPos(e.charIndex);
+      if (currentUtter === u) posInPara = e.charIndex - starts[k] + (k === 0 ? from0 : 0);
+    };
 
     const v = pickVoice();
     if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'zh-TW'; }
@@ -399,6 +410,13 @@
   // 才發出 interrupted。這時立刻 speak() 新的一句，新的會照唸，卻收不到 onstart／boundary／onend
   // → 反白卡住，唸完也不會接下一段（2026-11-05 診斷紀錄：調語速時發生）。
   // 所以 cancel 時記下「舊的那句還沒收尾」，speak() 等它收尾（最多 600ms）才送出新的。
+  // 改語速／字數／聲音：從目前唸到的那個字接著唸
+  function restartHere() {
+    const from = posInPara;
+    stopSpeech();
+    speak(idx, from);
+  }
+
   function stopSpeech() {
     const old = currentUtter;
     currentUtter = null;
@@ -555,18 +573,18 @@
 
     const rate = $('[data-s=rate]');
     [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.5, 1.75, 2].forEach(r => rate.add(new Option(r + 'x', r, false, r === Number(settings.rate))));
-    rate.onchange = () => { settings.rate = Number(rate.value); saveSettings(); if (playing) skip(0); };
+    rate.onchange = () => { settings.rate = Number(rate.value); saveSettings(); if (playing) restartHere(); };
 
     const chunk = $('[data-s=chunk]');
     [[1, '逐段'], [300, '300字'], [600, '600字'], [1500, '1500字'], [99999, '整頁']]
       .forEach(([v, l]) => chunk.add(new Option(l, v, false, v === Number(settings.chunk))));
-    chunk.onchange = () => { settings.chunk = Number(chunk.value); saveSettings(); if (playing) skip(0); };
+    chunk.onchange = () => { settings.chunk = Number(chunk.value); saveSettings(); if (playing) restartHere(); };
 
     ui.voice.onchange = () => {
       settings.voice = ui.voice.value;
       saveSettings();
       if (rule) { rule.voice = ui.voice.value; saveRules(); } // 每個網站記住自己的聲音（不同語言的網站可分開設）
-      if (playing) skip(0);
+      if (playing) restartHere();
     };
     fillVoices();
     synth.addEventListener('voiceschanged', fillVoices);
