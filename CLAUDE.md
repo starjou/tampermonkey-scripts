@@ -16,6 +16,8 @@ raw 連結已經是新版號、`@updateURL` 也正確，但面板的「檢查腳
 
 - 檔名是 `.js` 不是 `.user.js`，所以直接點 raw 連結瀏覽器只會顯示原始碼、不會跳安裝流程，一定要走「從 URL 安裝」。
 - 改了 `@version` 才會觸發更新，忘了改版號等於沒更新。
+- **改 `@name` 或 `@namespace` 等於換一支腳本**：TM 靠這兩個欄位認是不是同一支，改了之後「從 URL 安裝」會裝成新的一支、跟舊的並存。要先在 TM 刪掉舊的再裝；GM 儲存空間的資料不會帶過去。
+- **push 後 raw 連結可能還是舊版**：raw 經過 CDN（`cache-control: max-age=300`）。要確定拿到新版，「從 URL 安裝」時把網址裡的 `main` 換成 commit SHA（`…/tampermonkey-scripts/<sha>/xxx.js`），內容固定是那個 commit；腳本裡的 `@updateURL` 仍指向 `main`，之後的自動更新不受影響。網址後加 `?v=…` 只能繞過 CDN／瀏覽器快取，GitHub 端本身還沒同步時沒用（未實測是否有效）。
 
 ---
 
