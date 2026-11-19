@@ -137,6 +137,8 @@
 
   // 「複製選中的鏈接」：網站原本用 IE 專用的 document.body.createTextRange()，在 Chrome 會直接拋錯。
   // 改成複製勾選的原始連結（保留 |，貼進 eMule 的「貼上 eD2K 連結」用），一行一個。
+  // 只把空白轉成 %20：eMule 的貼上視窗遇到含空白的連結會報「無效的連結」（中括號、中文沒問題），
+  // 而 %20 加入後檔名會解回空白（實測）。
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -161,7 +163,9 @@
     const replaced = function (name) {
       const boxes = managedBoxes(name);
       if (!boxes.length) return orig.apply(this, arguments);
-      const links = boxes.filter((el) => el.checked).map(rawValue);
+      const links = boxes
+        .filter((el) => el.checked)
+        .map((el) => rawValue(el).replace(/ /g, '%20'));
       if (!links.length) {
         alert('沒有勾選任何連結');
         return;
