@@ -489,7 +489,7 @@ Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新�
 Tampermonkey userscript，讓新版 Chrome 能把 `ed2k://` 連結交給 eMule。
 
 - **檔案**：`/home/wsl/tampermonkey-scripts/ed2k-fix.js`
-- **目前版本**：v1.0
+- **目前版本**：v1.1
 - **作用範圍**：`@match *://*/*`，**刻意不限縮網域**（使用者決定），靠頁面結構判斷要怎麼處理
 
 ---

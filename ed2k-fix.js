@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         ed2k 連結修正（讓新版 Chrome 能開 eMule）
+// @name         ed2k 連結修正
 // @namespace    https://www.jk-web.com/
-// @version      1.0
+// @version      1.1
 // @description  把 ed2k:// 連結裡 Chrome 不接受的字元（| [ ] 空白、中日文等）轉成 %XX，讓 Chrome 視為合法網址並交給 eMule；並修好 ed2k 勾選清單的「下載選中」「複製選中」按鈕
 // @author       Jacky Jou
 // @match        *://*/*
