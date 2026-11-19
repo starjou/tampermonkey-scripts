@@ -67,6 +67,16 @@
 - 朗讀忽然停住時，可用 Tampermonkey 選單的「🩺 複製診斷紀錄」倒出事件時間軸（含 onstart／onend／onerror、換頁、背景切換）
 - 註：Edge 內建的中文 Natural 語音品質最好；其他瀏覽器沒有 Natural 語音或完全沒有語音時，面板會提示改用 Edge
 
+### ed2k 連結修正
+**檔案：** `ed2k-fix.js`<br>
+**適用：** 所有網站<br>
+**功能：**
+- 新版 Chrome 依 URL 標準解析，`ed2k://|file|...` 裡的 `|`、檔名的 `[ ]`、空白等字元會讓整個網址無效，點了沒反應；部分中日文字（如「名」「吉」「呼」）也會因為 Chrome 的判斷問題被當成無效
+- 把這些字元與所有中日文等非 ASCII 字元轉成 `%XX`，讓 Chrome 把連結交給 eMule；頁面之後用 JS 動態產生的連結也會處理
+- ed2k 勾選清單依頁面結構（不是網域）判斷處理方式：
+  - 用 `download('em',…)` / `ed2kcopy('em')` 這套程式的頁面（如 tt1069）：「下載選中的文件」改送修正後的連結；「複製選中的鏈接」原本用 IE 專用 API、在 Chrome 無效，改成複製原始連結（一行一個，可直接貼進 eMule）；勾選時的總大小照常計算
+  - 其他網站：直接把勾選框、隱藏欄位裡的 ed2k 連結改成修正版，讓「讀值再開啟」的按鈕能用（網站若拿這些值做別的事可能受影響）
+
 ## 安裝方式
 
 ### 手動安裝
@@ -80,6 +90,7 @@
    - [TRC20 測試地址產生器](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/trc20-test-address-generator.js)
    - [YouTube 自動隱藏片尾推薦畫面](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/youtube-endscreen-autohide.js)
    - [萬用網頁自動朗讀](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/web-tts-reader.js)
+   - [ed2k 連結修正](https://raw.githubusercontent.com/starjou/tampermonkey-scripts/main/ed2k-fix.js)
 
 ### 自動更新
 腳本內含 `@updateURL`，Tampermonkey 會定期檢查版本並自動更新。
