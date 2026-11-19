@@ -1,6 +1,6 @@
 # Tampermonkey Scripts — 開發筆記
 
-這個 repo 有多支 userscript，以下依腳本分節。目前有詳細筆記的是 IG、Facebook 兩支影片控制腳本與 Facebook 防自動重整，其餘腳本較單純，直接看原始碼即可。
+這個 repo 有多支 userscript，以下依腳本分節。目前有詳細筆記的是 IG、Facebook 兩支影片控制腳本、Facebook 防自動重整與 ed2k 連結修正，其餘腳本較單純，直接看原始碼即可。
 
 ---
 
@@ -479,3 +479,65 @@ Tampermonkey userscript，防止切回 Facebook 分頁時動態牆自己刷新�
 
    關 Reel 的流程是 FB 自己呼叫 `history.go(-1)` → trusted `popstate` 回 `/`，前後**沒有** `visibilitychange`，也沒有 target 是 window 的 focus/blur，所以 v2.0 擋的東西跟這件事無關、也擋不到。看起來是「離開 feed 超過某個時間門檻，回來就重抓」，門檻落在 20～47 分鐘之間（只有兩個資料點，實際值與判斷邏輯都未確認）。
    歷史線索（已被這次實驗推翻）：v1.8 的 commit 留言懷疑是 focus/blur 攔截造成的；v1.5～v1.7 憑推測去攔 popstate / `history.back()` 全部失敗。
+
+---
+
+# ed2k 連結修正
+
+## 專案概覽
+
+Tampermonkey userscript，讓新版 Chrome 能把 `ed2k://` 連結交給 eMule。
+
+- **檔案**：`/home/wsl/tampermonkey-scripts/ed2k-fix.js`
+- **目前版本**：v1.0
+- **作用範圍**：`@match *://*/*`，**刻意不限縮網域**（使用者決定），靠頁面結構判斷要怎麼處理
+
+---
+
+## 為什麼 Chrome 開不了 ed2k 連結
+
+通用的機制寫在 `dev-pitfalls` skill 的 `browser.md`，這裡只記本腳本的做法：
+
+- `fix()` 把 `scheme://` 之後的 forbidden 字元（`| [ ] ^ # : < > ? @ \` 空白等）轉 `%XX`，**所有非 ASCII 字元也一律用 `encodeURIComponent` 轉**。只轉 `|` 不夠：檔名的 `[ ]`、空白會壞；中文交給 Chrome 自己編碼也不行，「名」「呼」這類字會被 Chrome 判無效（Chrome 158 實測）。
+- `/`、`%` 不轉：`/` 是 host 結尾（連結以 `|/` 收尾）；`%` 轉了會把網站已編碼的 `%20` 再編一次。
+- eMule 收到 `%7C`、`%5B`、UTF-8 `%XX` 都能正確解回檔名（2026-11-20 實測：英文、空白、含「名」的中文檔名）。
+
+---
+
+## 勾選清單：新做法 / 舊做法依頁面結構判斷
+
+### tt1069 的 `static/js/emule.js`（新做法的對象）
+
+網站公開可抓（文章頁要登入，`emule.js` 不用）。結構：
+
+```
+input[type=checkbox][name="em"][value="ed2k://|file|…|/"]   ← 每個檔案一個，value 是原始連結
+a[href="ed2k://|file|…|/"]                                  ← 檔名超連結
+input[type=button][onclick="download('em',0,1)"]            ← 下載選中的文件
+input[type=button][onclick="ed2kcopy('em')"]                ← 複製選中的鏈接
+td#size_em                                                  ← 總大小
+```
+
+- `download()`：逐一 `window.location = 勾選框.value`，用 `setTimeout("download(...)")` 字串遞迴處理下一個
+- `em_size()`：`value.split('|')[3]` 算總大小 → **value 不能改**，改了顯示 `NaN Bytes`
+- `ed2kcopy()`：用 IE 專用的 `document.body.createTextRange()`，**在 Chrome 本來就壞**
+
+### 判斷方式（不看網域）
+
+- 從所有 `[onclick]` 取出 `download('xx'` / `ed2kcopy('xx'` 的參數，且對應全域函式要存在 → 這些 name 的勾選框走**新做法**：value 不動，包裝 `download()`（呼叫前換修正版、`finally` 換回）、`ed2kcopy()` 改用 clipboard API 複製原始 `|` 連結
+- 其餘 value 是 ed2k 的元素走**舊做法**：直接改 value，原值記在 `original`（WeakMap）
+- document-end 判斷一次，`load` 時再判斷；後來才確認是新做法的會還原 value（`emule.js` 較晚載入的情況）。使用者確認維持「先判斷、load 再校正」，不要改成只等 load（其他網站的按鈕會延遲到 load 才能用）
+- 別站剛好有無關的全域 `download()` 不會被誤判：onclick 參數對不到 value 是 ed2k 的勾選框就不包裝
+
+### 測試
+
+jsdom 情境測試（tt1069 結構先載入／較晚載入、其他網站自訂函式、其他網站有無關 `download()`）與 Chrome headless 的 URL 測試都放在 session scratchpad，沒進 repo。要重測時照 `dev-pitfalls/browser.md` 的 headless 指令跑。
+
+---
+
+## 未解決 / 待觀察
+
+1. **真站還沒實測**：一次勾多個檔案「下載選中」、「複製選中的鏈接」貼進 eMule、勾選時總大小（jsdom 都過了）
+2. **舊做法的副作用未知**：其他網站若拿勾選框 value 做別的事（例如用 `|` 切字串）會壞，要碰到再逐站看
+3. **兩種做法都救不到**：按下時才用 JS 拼 ed2k 字串直接導向的網站（`location` 賦值攔不到）
+4. **`emule.js` 是否為通用外掛**：用函式名搜尋找不到其他網站，目前只確認 tt1069
